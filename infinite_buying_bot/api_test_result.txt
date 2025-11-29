@@ -1,0 +1,4 @@
+Is OK: False
+Error Code: OPSQ2000
+Error Message: ERROR : INPUT INVALID_CHECK_ACNO
+

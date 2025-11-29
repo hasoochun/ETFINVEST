@@ -1,0 +1,44 @@
+Balance check failed: OPSQ2000 - ERROR : INPUT INVALID_CHECK_ACNO
+Traceback (most recent call last):
+  File "C:\Users\user\.gemini\antigravity\scratch\open-trading-api\infinite_buying_bot\diagnose_simple.py", line 86, in <module>
+    price = float(df['last'].iloc[0])
+ValueError: could not convert string to float: ''
+
+======================================================================
+  KIS Mock Trading API Diagnosis
+======================================================================
+
+[TEST 1] Authentication
+SUCCESS - Account: 50157068, Product: 01
+
+[TEST 2] Balance Inquiry (Overseas Stock)
+
+Output1 (Account Info):
+  Result: EMPTY DataFrame
+  ISSUE: API returned empty response for account info
+
+Output2 (Holdings):
+  Result: EMPTY (no holdings)
+
+[TEST 3] Price Inquiry (SOXL)
+  Rows: 1, Columns: 11
+FAILED - could not convert string to float: ''
+
+======================================================================
+  Diagnosis Summary
+======================================================================
+
+ISSUE IDENTIFIED:
+  - Balance inquiry returns empty DataFrame (df1)
+  - This prevents getting buying power for trading
+
+POSSIBLE CAUSES:
+  1. Mock trading account not funded
+  2. API parameter mismatch
+  3. API endpoint or response format changed
+
+NEXT STEPS:
+  1. Check mock account funding on KIS website
+  2. Verify API parameters match documentation
+  3. Test with different exchange codes (NYSE, AMEX)
+======================================================================
