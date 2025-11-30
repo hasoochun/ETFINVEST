@@ -15,12 +15,16 @@ def get_status_keyboard() -> InlineKeyboardMarkup:
             InlineKeyboardButton("⏸️ 매매 중지", callback_data='stop_bot')
         ],
         [
-            InlineKeyboardButton("🎯 ETF 선택", callback_data='show_etf_selection'),
-            InlineKeyboardButton("🔄 Refresh", callback_data='refresh_status')
+            InlineKeyboardButton("📊 포트폴리오", callback_data='show_portfolio'),
+            InlineKeyboardButton("⚖️ 리밸런싱", callback_data='show_rebalance')
         ],
         [
-            InlineKeyboardButton("💰 Balance", callback_data='show_balance'),
-            InlineKeyboardButton("📈 Position", callback_data='show_position')
+            InlineKeyboardButton("🎯 ETF 선택", callback_data='show_etf_selection'),
+            InlineKeyboardButton("🔄 새로고침", callback_data='refresh_status')
+        ],
+        [
+            InlineKeyboardButton("💰 잔고", callback_data='show_balance'),
+            InlineKeyboardButton("📈 포지션", callback_data='show_position')
         ]
     ]
     return InlineKeyboardMarkup(keyboard)
@@ -34,10 +38,10 @@ def get_etf_selection_keyboard() -> InlineKeyboardMarkup:
     """
     keyboard = [
         [
-            InlineKeyboardButton("📊 SOXL (반도체 3x)", callback_data='select_etf_SOXL')
+            InlineKeyboardButton("📈 TQQQ (나스닥 3x)", callback_data='select_etf_TQQQ')
         ],
         [
-            InlineKeyboardButton("📈 TQQQ (나스닥 3x)", callback_data='select_etf_TQQQ')
+            InlineKeyboardButton("💵 SHV (단기 국채)", callback_data='select_etf_SHV')
         ],
         [
             InlineKeyboardButton("💎 SCHD (배당)", callback_data='select_etf_SCHD')

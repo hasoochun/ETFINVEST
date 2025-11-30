@@ -19,15 +19,36 @@ class Trader:
         ka.auth(svr=self.svr, product=self.product)
         self.trenv = ka.getTREnv()
         
-        self.symbol = config.get('strategy', {}).get('symbol', 'SOXL')
+        # Multi-symbol support
+        self.symbol = config.get('strategy', {}).get('symbol', 'TQQQ')  # Default to TQQQ (portfolio strategy)
+        self.symbols = ['TQQQ', 'SHV', 'SCHD']  # Portfolio symbols
         self.exchange = config.get('strategy', {}).get('exchange', 'NASD')
         self.currency = config.get('strategy', {}).get('currency', 'USD')
 
-    def get_price(self):
-        df = api.price(auth="", excd=self.exchange, symb=self.symbol, env_dv=self.env_mode)
+    def get_price(self, symbol=None):
+        """Get current price for a symbol
+        
+        Args:
+            symbol: Symbol to get price for (default: self.symbol)
+        """
+        symbol = symbol or self.symbol
+        df = api.price(auth="", excd=self.exchange, symb=symbol, env_dv=self.env_mode)
         if not df.empty:
             return self._safe_float(df['last'].iloc[0])
         return None
+    
+    def get_all_prices(self):
+        """Get current prices for all portfolio symbols
+        
+        Returns:
+            Dict of {symbol: price}
+        """
+        prices = {}
+        for symbol in self.symbols:
+            price = self.get_price(symbol)
+            if price:
+                prices[symbol] = price
+        return prices
 
     def _safe_float(self, value):
         try:
@@ -86,6 +107,70 @@ class Trader:
                 avg_price = self._safe_float(target['pchs_avg_pric'].iloc[0])
                 
         return buying_power, quantity, avg_price
+
+    def get_all_holdings(self) -> list:
+        """Get all current holdings
+        
+        Returns:
+            List of dictionaries containing holding details:
+            [{'symbol': 'TQQQ', 'qty': 10, 'avg_price': 30.5, 'current_price': 32.0, 'value': 320.0}, ...]
+        """
+        df1, df2 = api.inquire_balance(
+            cano=self.trenv.my_acct,
+            acnt_prdt_cd=self.trenv.my_prod,
+            ovrs_excg_cd=self.exchange,
+            tr_crcy_cd=self.currency,
+            env_dv=self.env_mode
+        )
+        
+        holdings = []
+        if not df2.empty:
+            for _, row in df2.iterrows():
+                symbol = row['ovrs_pdno']
+                qty = self._safe_int(row['ovrs_cblc_qty'])
+                avg_price = self._safe_float(row['pchs_avg_pric'])
+                
+                # Get current price
+                current_price = self.get_price(symbol)
+                if not current_price:
+                    current_price = avg_price
+                
+                if qty > 0:
+                    holdings.append({
+                        'symbol': symbol,
+                        'qty': qty,
+                        'avg_price': avg_price,
+                        'current_price': current_price,
+                        'value': qty * current_price
+                    })
+                    
+        return holdings
+    
+    def get_position(self, symbol):
+        """Get position for a specific symbol
+        
+        Args:
+            symbol: Symbol to get position for
+            
+        Returns:
+            Tuple of (quantity, avg_price) or (0, 0.0) if no position
+        """
+        df1, df2 = api.inquire_balance(
+            cano=self.trenv.my_acct,
+            acnt_prdt_cd=self.trenv.my_prod,
+            ovrs_excg_cd=self.exchange,
+            tr_crcy_cd=self.currency,
+            env_dv=self.env_mode
+        )
+        
+        if not df2.empty:
+            target = df2[df2['ovrs_pdno'] == symbol]
+            if not target.empty:
+                quantity = self._safe_int(target['ovrs_cblc_qty'].iloc[0])
+                avg_price = self._safe_float(target['pchs_avg_pric'].iloc[0])
+                return quantity, avg_price
+        
+        return 0, 0.0
 
     def buy(self, amount, split_count=None, reason=None):
         """Execute buy order with detailed notifications

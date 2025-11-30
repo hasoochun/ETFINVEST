@@ -153,6 +153,14 @@ def main():
             logger.info(f"Price: ${current_price}, Holdings: {quantity} @ ${avg_price:.2f}, Cash: ${buying_power:.2f}")
             logger.info(f"Selected ETF: {bot_controller.trading_symbol}")
             
+            # Log holdings to database for dashboard
+            try:
+                all_holdings = trader.get_all_holdings()
+                from infinite_buying_bot.dashboard.database import log_holdings
+                log_holdings(all_holdings)
+            except Exception as e:
+                logger.error(f"Failed to log holdings: {e}")
+            
             # Track MDD
             if quantity > 0:
                 current_position_value = quantity * current_price

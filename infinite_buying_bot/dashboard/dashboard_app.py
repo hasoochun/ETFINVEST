@@ -129,7 +129,23 @@ with col1:
 with col2:
     st.markdown("### 상세 내역")
     st.metric("현금", f"${cash:,.0f}", f"{(cash/total_value*100):.1f}%" if total_value > 0 else "0%")
-    st.metric("주식", f"${position_value:,.0f}", f"{(position_value/total_value*100):.1f}%" if total_value > 0 else "0%")
+    
+    # Get detailed holdings from database
+    from dashboard.database import get_current_holdings
+    holdings = get_current_holdings()
+    
+    # If no detailed holdings (e.g. bot not running), use the single position data
+    if not holdings and stats['position_quantity'] > 0:
+        # Fallback to single position
+        st.metric("주식 (통합)", f"${position_value:,.0f}", f"{(position_value/total_value*100):.1f}%" if total_value > 0 else "0%")
+    else:
+        # Show each holding
+        for holding in holdings:
+            symbol = holding['symbol']
+            value = holding['value']
+            pct = (value / total_value * 100) if total_value > 0 else 0
+            st.metric(f"주식 ({symbol})", f"${value:,.0f}", f"{pct:.1f}%")
+            
     st.metric("총 자산", f"${total_value:,.0f}")
 
 st.markdown("---")

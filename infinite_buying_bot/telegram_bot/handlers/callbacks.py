@@ -5,6 +5,14 @@ from telegram import Update
 from telegram.ext import ContextTypes
 from ..formatters.messages import format_status, format_balance, format_position
 from ..formatters.keyboards import get_status_keyboard, get_etf_selection_keyboard
+try:
+    from ..formatters.portfolio_messages import format_portfolio, format_rebalancing_plan
+except ImportError:
+    # Fallback if portfolio_messages not available
+    def format_portfolio(data):
+        return "📊 Portfolio view coming soon..."
+    def format_rebalancing_plan(data):
+        return "⚖️ Rebalancing view coming soon..."
 
 logger = logging.getLogger(__name__)
 
@@ -56,6 +64,46 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await context.bot.send_message(
                 chat_id=query.message.chat_id,
                 text="📊 Chart feature coming soon..."
+            )
+            await _send_status_gui(context, query.message.chat_id, bot_controller)
+        
+        elif query.data == 'show_portfolio':
+            # Get portfolio summary from bot controller
+            if hasattr(bot_controller, 'portfolio_manager'):
+                portfolio_summary = bot_controller.portfolio_manager.get_portfolio_summary()
+                message = format_portfolio(portfolio_summary)
+            else:
+                message = (
+                    "📊 *포트폴리오*\n"
+                    "━━━━━━━━━━━━━━━━━━━━\n"
+                    "포트폴리오 기능이 활성화되지 않았습니다.\n"
+                    "`main_portfolio.py`를 실행해주세요.\n"
+                    "━━━━━━━━━━━━━━━━━━━━"
+                )
+            await context.bot.send_message(
+                chat_id=query.message.chat_id,
+                text=message,
+                parse_mode='Markdown'
+            )
+            await _send_status_gui(context, query.message.chat_id, bot_controller)
+        
+        elif query.data == 'show_rebalance':
+            # Get rebalancing actions from bot controller
+            if hasattr(bot_controller, 'rebalancing_engine'):
+                actions = bot_controller.rebalancing_engine.get_rebalancing_actions()
+                message = format_rebalancing_plan(actions)
+            else:
+                message = (
+                    "⚖️ *리밸런싱*\n"
+                    "━━━━━━━━━━━━━━━━━━━━\n"
+                    "리밸런싱 기능이 활성화되지 않았습니다.\n"
+                    "`main_portfolio.py`를 실행해주세요.\n"
+                    "━━━━━━━━━━━━━━━━━━━━"
+                )
+            await context.bot.send_message(
+                chat_id=query.message.chat_id,
+                text=message,
+                parse_mode='Markdown'
             )
             await _send_status_gui(context, query.message.chat_id, bot_controller)
         
@@ -122,9 +170,9 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             bot_controller.trading_symbol = etf_symbol
             
             etf_names = {
-                'SOXL': '반도체 3x 레버리지',
                 'TQQQ': '나스닥 3x 레버리지',
-                'SCHD': '고배당 ETF'
+                'SHV': '단기 국채 ETF',
+                'SCHD': '고배당 성장 ETF'
             }
             
             message = (

@@ -52,6 +52,39 @@ def init_db():
         )
     """)
     
+    # Portfolio snapshots table (for dashboard charts)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS portfolio_snapshots (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            timestamp TEXT NOT NULL,
+            total_value REAL NOT NULL,
+            tqqq_value REAL,
+            shv_value REAL,
+            schd_value REAL,
+            cash_value REAL,
+            tqqq_pct REAL,
+            shv_pct REAL,
+            schd_pct REAL,
+            cash_pct REAL,
+            drift_tqqq REAL,
+            drift_shv REAL,
+            drift_schd REAL
+        )
+    """)
+    
+    # Rebalancing history table (for audit trail)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS rebalancing_history (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            timestamp TEXT NOT NULL,
+            action_type TEXT NOT NULL,
+            from_symbol TEXT,
+            to_symbol TEXT,
+            amount REAL NOT NULL,
+            reason TEXT
+        )
+    """)
+    
     conn.commit()
     conn.close()
 
@@ -89,6 +122,62 @@ def log_trade(trade_type: str, symbol: str, quantity: int, price: float,
     
     conn.commit()
     conn.close()
+
+def create_holdings_table():
+    """Create holdings table if it doesn't exist"""
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS holdings (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            timestamp TEXT,
+            symbol TEXT,
+            quantity INTEGER,
+            avg_price REAL,
+            current_price REAL,
+            value REAL
+        )
+    ''')
+    conn.commit()
+    conn.close()
+
+def log_holdings(holdings: list):
+    """Log current holdings to database"""
+    create_holdings_table()
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    
+    cursor.execute('DELETE FROM holdings')
+    
+    timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    
+    for h in holdings:
+        cursor.execute('''
+            INSERT INTO holdings (timestamp, symbol, quantity, avg_price, current_price, value)
+            VALUES (?, ?, ?, ?, ?, ?)
+        ''', (
+            timestamp,
+            h['symbol'],
+            h['qty'],
+            h['avg_price'],
+            h['current_price'],
+            h['value']
+        ))
+    
+    conn.commit()
+    conn.close()
+
+def get_current_holdings():
+    """Get current holdings from database"""
+    create_holdings_table()
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    cursor = conn.cursor()
+    cursor.execute('SELECT * FROM holdings')
+    rows = cursor.fetchall()
+    conn.close()
+    
+    return [dict(row) for row in rows]
 
 def log_daily_stats(total_value: float, daily_return_pct: float, cumulative_return_pct: float,
                    position_quantity: int = 0, position_avg_price: float = 0):

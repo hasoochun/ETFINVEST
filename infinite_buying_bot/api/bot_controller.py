@@ -19,7 +19,7 @@ class BotController:
         self.start_time = None
         self.notifier = None
         self.trader = None
-        self.trading_symbol = "SOXL"  # Default ETF
+        self.trading_symbol = "TQQQ"  # Default ETF (changed from SOXL to TQQQ)
         logger.info("Bot controller initialized")
     
     def set_trader(self, trader):
@@ -53,6 +53,7 @@ class BotController:
         return {
             'is_running': self.is_running,
             'status': 'RUNNING' if self.is_running else 'STOPPED',
+            'trading_symbol': self.trading_symbol,
             'market_open': market_open,
             'market_status': market_status,
             'mode': 'PAPER TRADING',  # TODO: Get from config
@@ -126,6 +127,12 @@ class BotController:
             'pnl_pct': round(pnl_pct, 2),
         }
     
+    def get_holdings(self) -> list:
+        """Get all holdings from trader"""
+        if not self.trader:
+            return []
+        return self.trader.get_all_holdings()
+    
     def get_pnl(self) -> Dict:
         """
         Get profit and loss information
@@ -174,7 +181,7 @@ class BotController:
         logger.info("Bot controller started")
         
         if self.notifier:
-            await self.notifier.send_bot_started()
+            self.notifier.send_bot_started()
     
     async def stop(self):
         """Stop the bot controller"""
@@ -182,4 +189,4 @@ class BotController:
         logger.info("Bot controller stopped")
         
         if self.notifier:
-            await self.notifier.send_bot_stopped()
+            self.notifier.send_bot_stopped()

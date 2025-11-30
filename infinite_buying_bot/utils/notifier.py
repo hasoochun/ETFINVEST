@@ -35,3 +35,16 @@ class Notifier:
             response.raise_for_status()
         except Exception as e:
             logger.error(f"Failed to send Telegram notification: {e}")
+
+    def send_bot_started(self):
+        """Send bot started notification"""
+        self.send("🚀 Bot Started\nTrading bot is now running.")
+
+    def send_bot_stopped(self):
+        """Send bot stopped notification"""
+        self.send("⏸️ Bot Stopped\nTrading bot has been stopped.")
+
+    def send_error(self, error):
+        """Send error notification"""
+        self.send(f"❌ Error: {error}")
+

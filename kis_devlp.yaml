@@ -1,19 +1,19 @@
 #홈페이지에서 API서비스 신청시 받은 Appkey, Appsecret 값 설정
 #실전투자
-my_app: "앱키"
-my_sec: "앱키 시크릿"
+my_app: "PSJgF4Y36sCVBmQF4z671Jd5Vf6tGlmB53MY"
+my_sec: "EeU80V2/UUBhNDErGUpcZYX2LkAJX3Bw9yh2uZwd3OPgTHu57EIopa64QY2H8haRVZ2Hf/M9CSPoKR"
 
 #모의투자
-paper_app: "모의투자 앱키"
-paper_sec: "모의투자 앱키 시크릿"
+paper_app: "PSJgF4Y36sCVBmQF4z671Jd5Vf6tGlmB53MY"
+paper_sec: "EeU80V2/UUBhNDErGUpcZYX2LkAJX3Bw9yh2uZwd3OPgTHu57EIopa64QY2H8haRVZ2Hf/M9CSPoKR"
 
 # HTS ID
 my_htsid: "사용자 HTS ID"
 
 #계좌번호 앞 8자리
-my_acct_stock: "증권계좌 8자리"
+my_acct_stock: "43430971"
 my_acct_future: "선물옵션계좌 8자리"
-my_paper_stock: "모의투자 증권계좌 8자리"
+my_paper_stock: "50157068"
 my_paper_future: "모의투자 선물옵션계좌 8자리"
 
 #계좌번호 뒤 2자리

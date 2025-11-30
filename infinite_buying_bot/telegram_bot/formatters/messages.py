@@ -20,6 +20,7 @@ def format_status(data: Dict) -> str:
         f"🤖 *봇 상태*\n"
         f"━━━━━━━━━━━━━━━━━━━━\n"
         f"상태: `{status_icon} {data.get('status', 'UNKNOWN').upper()}`\n"
+        f"종목: `🎯 {data.get('trading_symbol', 'UNKNOWN')}`\n"
         f"시장: `{market_icon} {data.get('market_status', 'UNKNOWN')}`\n"
         f"모드: `📝 {data.get('mode', 'UNKNOWN').upper()}`\n"
         f"가동시간: `{data.get('uptime', 'N/A')}`\n\n"
