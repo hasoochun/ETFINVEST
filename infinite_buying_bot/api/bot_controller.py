@@ -1,6 +1,7 @@
 """Bot Controller API for Telegram bot integration"""
 
 import logging
+import pytz
 from datetime import datetime, timedelta
 from typing import Dict, Optional
 
@@ -20,6 +21,11 @@ class BotController:
         self.notifier = None
         self.trader = None
         self.trading_symbol = "TQQQ"  # Default ETF (changed from SOXL to TQQQ)
+        self.portfolio_manager = None
+        self.rebalancing_engine = None
+        self.is_simulation = False
+        self.is_accelerated = False  # Accelerated testing mode (10 min = 1 day, 3% profit)
+        self.last_update_time = datetime.now()
         logger.info("Bot controller initialized")
     
     def set_trader(self, trader):
@@ -37,7 +43,11 @@ class BotController:
         Returns:
             Dictionary with status information
         """
-        uptime = "N/A"
+        # Update heartbeat to refresh last_update_time
+        self.update_heartbeat()
+        
+        # Calculate uptime
+        uptime = "0h 0m 0s"
         if self.start_time:
             delta = datetime.now() - self.start_time
             hours = delta.seconds // 3600
@@ -45,21 +55,98 @@ class BotController:
             seconds = delta.seconds % 60
             uptime = f"{hours}h {minutes}m {seconds}s"
         
-        # TODO: Get actual market status from scheduler
-        market_open = False
-        market_status = "CLOSED"
-        next_open = "4h 42m"
-        
+        # Determine market status
+        if self.is_simulation:
+            market_open = True
+            market_status = "🟢 SIMULATION (OPEN)"
+            next_open = "Running..."
+        elif self.is_accelerated:
+            # Accelerated mode: check actual market hours
+            kst = pytz.timezone('Asia/Seoul')
+            now = datetime.now(kst)
+            is_weekday = now.weekday() < 5
+            current_hour = now.hour
+            current_minute = now.minute
+            
+            is_market_time = (23 <= current_hour or current_hour < 6)
+            if current_hour == 23 and current_minute < 30:
+                is_market_time = False
+                
+            market_open = is_weekday and is_market_time
+            market_status = "⚡ ACCELERATED" + (" (OPEN)" if market_open else " (CLOSED)")
+            
+            if market_open:
+                next_open = "Market is Open"
+            else:
+                target = now.replace(hour=23, minute=30, second=0, microsecond=0)
+                if now >= target:
+                    target += timedelta(days=1)
+                while target.weekday() >= 5:
+                    target += timedelta(days=1)
+                
+                diff = target - now
+                hours = diff.seconds // 3600
+                minutes = (diff.seconds % 3600) // 60
+                next_open = f"{hours}h {minutes}m"
+        else:
+            # TODO: Link with actual scheduler if possible, for now use simple time check
+            # This is a simplified check, ideally we should ask the scheduler
+            kst = pytz.timezone('Asia/Seoul')
+            now = datetime.now(kst)
+            is_weekday = now.weekday() < 5
+            # US Market hours in KST (approximate for display)
+            # Winter time: 23:30 - 06:00
+            current_hour = now.hour
+            current_minute = now.minute
+            
+            # Simple check for display purposes
+            is_market_time = (23 <= current_hour or current_hour < 6)
+            if current_hour == 23 and current_minute < 30:
+                is_market_time = False
+                
+            market_open = is_weekday and is_market_time
+            market_status = "🟢 OPEN" if market_open else "🔴 CLOSED"
+            
+            if market_open:
+                next_open = "Market is Open"
+            else:
+                # Calculate time until 23:30
+                target = now.replace(hour=23, minute=30, second=0, microsecond=0)
+                if now >= target:
+                    target += timedelta(days=1)
+                while target.weekday() >= 5: # Skip weekends
+                    target += timedelta(days=1)
+                
+                diff = target - now
+                hours = diff.seconds // 3600
+                minutes = (diff.seconds % 3600) // 60
+                next_open = f"{hours}h {minutes}m"
+
+        # Calculate last update time
+        update_delta = datetime.now() - self.last_update_time
+        if update_delta.seconds < 60:
+            last_update_str = f"{update_delta.seconds}s ago"
+        else:
+            last_update_str = f"{update_delta.seconds // 60}m ago"
+
+        # Determine mode display
+        if self.is_simulation:
+            mode_str = '🧪 SIMULATION'
+        elif self.is_accelerated:
+            mode_str = '⚡ ACCELERATED (10min=1day, 3%)'
+        else:
+            mode_str = '📝 PAPER TRADING'
+
         return {
             'is_running': self.is_running,
             'status': 'RUNNING' if self.is_running else 'STOPPED',
             'trading_symbol': self.trading_symbol,
             'market_open': market_open,
             'market_status': market_status,
-            'mode': 'PAPER TRADING',  # TODO: Get from config
+            'mode': mode_str,
             'uptime': uptime,
             'next_open': next_open,
-            'last_update': '30s ago'  # TODO: Get actual last update time
+            'last_update': last_update_str
         }
     
     def get_balance(self) -> Dict:
@@ -190,3 +277,6 @@ class BotController:
         
         if self.notifier:
             self.notifier.send_bot_stopped()
+    def update_heartbeat(self):
+        """Update the last update timestamp"""
+        self.last_update_time = datetime.now()

@@ -36,7 +36,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await context.bot.send_message(
                 chat_id=query.message.chat_id,
                 text=message,
-                parse_mode='Markdown',
+                parse_mode='HTML',
                 reply_markup=keyboard
             )
         
@@ -46,7 +46,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await context.bot.send_message(
                 chat_id=query.message.chat_id,
                 text=message,
-                parse_mode='Markdown'
+                parse_mode='HTML'
             )
             await _send_status_gui(context, query.message.chat_id, bot_controller)
         
@@ -56,34 +56,37 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await context.bot.send_message(
                 chat_id=query.message.chat_id,
                 text=message,
-                parse_mode='Markdown'
+                parse_mode='HTML'
             )
             await _send_status_gui(context, query.message.chat_id, bot_controller)
-        
-        elif query.data == 'show_chart':
-            await context.bot.send_message(
-                chat_id=query.message.chat_id,
-                text="📊 Chart feature coming soon..."
-            )
-            await _send_status_gui(context, query.message.chat_id, bot_controller)
-        
+
         elif query.data == 'show_portfolio':
-            # Get portfolio summary from bot controller
-            if hasattr(bot_controller, 'portfolio_manager'):
-                portfolio_summary = bot_controller.portfolio_manager.get_portfolio_summary()
-                message = format_portfolio(portfolio_summary)
+            logger.info(f"DEBUG: Checking portfolio_manager in bot_controller. Dir: {dir(bot_controller)}")
+            if bot_controller.portfolio_manager:
+                summary = bot_controller.portfolio_manager.get_portfolio_summary()
+                message = format_portfolio(summary)
             else:
+                logger.error("DEBUG: portfolio_manager is None or missing")
                 message = (
-                    "📊 *포트폴리오*\n"
+                    "💼 <b>포트폴리오</b>\n"
                     "━━━━━━━━━━━━━━━━━━━━\n"
                     "포트폴리오 기능이 활성화되지 않았습니다.\n"
-                    "`main_portfolio.py`를 실행해주세요.\n"
+                    "<code>main_portfolio.py</code>를 실행해주세요.\n"
                     "━━━━━━━━━━━━━━━━━━━━"
                 )
             await context.bot.send_message(
                 chat_id=query.message.chat_id,
                 text=message,
-                parse_mode='Markdown'
+                parse_mode='HTML'
+            )
+            await _send_status_gui(context, query.message.chat_id, bot_controller)
+        
+        elif query.data == 'show_chart':
+            message = "📊 Chart feature coming soon..."
+            await context.bot.send_message(
+                chat_id=query.message.chat_id,
+                text=message,
+                parse_mode='HTML'
             )
             await _send_status_gui(context, query.message.chat_id, bot_controller)
         
@@ -94,76 +97,76 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 message = format_rebalancing_plan(actions)
             else:
                 message = (
-                    "⚖️ *리밸런싱*\n"
+                    "⚖️ <b>리밸런싱</b>\n"
                     "━━━━━━━━━━━━━━━━━━━━\n"
                     "리밸런싱 기능이 활성화되지 않았습니다.\n"
-                    "`main_portfolio.py`를 실행해주세요.\n"
+                    "<code>main_portfolio.py</code>를 실행해주세요.\n"
                     "━━━━━━━━━━━━━━━━━━━━"
                 )
             await context.bot.send_message(
                 chat_id=query.message.chat_id,
                 text=message,
-                parse_mode='Markdown'
+                parse_mode='HTML'
             )
             await _send_status_gui(context, query.message.chat_id, bot_controller)
         
         elif query.data == 'confirm_force_exit':
             bot_controller.force_exit_all()
             message = (
-                "💸 *Force Exit Executed*\\n"
-                "━━━━━━━━━━━━━━━━━━━━\\n"
-                "All positions have been sold.\\n"
+                "💸 <b>Force Exit Executed</b>\n"
+                "━━━━━━━━━━━━━━━━━━━━\n"
+                "All positions have been sold.\n"
                 "━━━━━━━━━━━━━━━━━━━━"
             )
-            await query.edit_message_text(message, parse_mode='Markdown')
+            await query.edit_message_text(message, parse_mode='HTML')
         
         elif query.data == 'confirm_emergency':
             bot_controller.emergency_stop()
             message = (
-                "🚨 *EMERGENCY STOP ACTIVATED*\\n"
-                "━━━━━━━━━━━━━━━━━━━━\\n"
-                "Bot stopped.\\n"
-                "All positions sold.\\n"
-                "Manual restart required.\\n"
+                "🚨 <b>EMERGENCY STOP ACTIVATED</b>\n"
+                "━━━━━━━━━━━━━━━━━━━━\n"
+                "Bot stopped.\n"
+                "All positions sold.\n"
+                "Manual restart required.\n"
                 "━━━━━━━━━━━━━━━━━━━━"
             )
-            await query.edit_message_text(message, parse_mode='Markdown')
+            await query.edit_message_text(message, parse_mode='HTML')
         
         elif query.data == 'start_bot':
             await bot_controller.start()
             message = (
-                "✅ *매매 시작*\\n"
-                "━━━━━━━━━━━━━━━━━━━━\\n"
-                "자동매매가 활성화되었습니다.\\n"
-                "시장 개장 시 전략에 따라 거래를 시작합니다.\\n"
+                "✅ <b>매매 시작</b>\n"
+                "━━━━━━━━━━━━━━━━━━━━\n"
+                "자동매매가 활성화되었습니다.\n"
+                "시장 개장 시 전략에 따라 거래를 시작합니다.\n"
                 "━━━━━━━━━━━━━━━━━━━━"
             )
-            await query.edit_message_text(message, parse_mode='Markdown')
+            await query.edit_message_text(message, parse_mode='HTML')
             await _send_status_gui(context, query.message.chat_id, bot_controller)
         
         elif query.data == 'stop_bot':
             await bot_controller.stop()
             message = (
-                "⏸️ *매매 중지*\\n"
-                "━━━━━━━━━━━━━━━━━━━━\\n"
-                "자동매매가 일시중지되었습니다.\\n"
-                "현재 포지션은 유지됩니다.\\n"
+                "⏸️ <b>매매 중지</b>\n"
+                "━━━━━━━━━━━━━━━━━━━━\n"
+                "자동매매가 일시중지되었습니다.\n"
+                "현재 포지션은 유지됩니다.\n"
                 "━━━━━━━━━━━━━━━━━━━━"
             )
-            await query.edit_message_text(message, parse_mode='Markdown')
+            await query.edit_message_text(message, parse_mode='HTML')
             await _send_status_gui(context, query.message.chat_id, bot_controller)
         
         elif query.data == 'show_etf_selection':
             current_etf = bot_controller.trading_symbol if hasattr(bot_controller, 'trading_symbol') else 'SOXL'
             message = (
-                f"🎯 *ETF 선택*\\n"
-                f"━━━━━━━━━━━━━━━━━━━━\\n"
-                f"현재 선택: *{current_etf}*\\n\\n"
-                f"거래할 ETF를 선택하세요:\\n"
+                f"🎯 <b>ETF 선택</b>\n"
+                f"━━━━━━━━━━━━━━━━━━━━\n"
+                f"현재 선택: <b>{current_etf}</b>\n\n"
+                f"거래할 ETF를 선택하세요:\n"
                 f"━━━━━━━━━━━━━━━━━━━━"
             )
             keyboard = get_etf_selection_keyboard()
-            await query.edit_message_text(message, parse_mode='Markdown', reply_markup=keyboard)
+            await query.edit_message_text(message, parse_mode='HTML', reply_markup=keyboard)
         
         elif query.data.startswith('select_etf_'):
             etf_symbol = query.data.split('_')[-1]
@@ -176,21 +179,21 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             }
             
             message = (
-                f"✅ *ETF 변경 완료*\\n"
-                f"━━━━━━━━━━━━━━━━━━━━\\n"
-                f"선택된 ETF: *{etf_symbol}*\\n"
-                f"({etf_names.get(etf_symbol, 'Unknown')})\\n\\n"
-                f"다음 거래부터 적용됩니다.\\n"
+                f"✅ <b>ETF 변경 완료</b>\n"
+                f"━━━━━━━━━━━━━━━━━━━━\n"
+                f"선택된 ETF: <b>{etf_symbol}</b>\n"
+                f"({etf_names.get(etf_symbol, 'Unknown')})\n\n"
+                f"다음 거래부터 적용됩니다.\n"
                 f"━━━━━━━━━━━━━━━━━━━━"
             )
-            await query.edit_message_text(message, parse_mode='Markdown')
+            await query.edit_message_text(message, parse_mode='HTML')
             await _send_status_gui(context, query.message.chat_id, bot_controller)
         
         elif query.data == 'back_to_status':
             status_data = bot_controller.get_status()
             message = format_status(status_data)
             keyboard = get_status_keyboard()
-            await query.edit_message_text(message, parse_mode='Markdown', reply_markup=keyboard)
+            await query.edit_message_text(message, parse_mode='HTML', reply_markup=keyboard)
         
         elif query.data == 'cancel':
             await query.edit_message_text("❌ Action cancelled.")
@@ -219,8 +222,9 @@ async def _send_status_gui(context: ContextTypes.DEFAULT_TYPE, chat_id: int, bot
         await context.bot.send_message(
             chat_id=chat_id,
             text=message,
-            parse_mode='Markdown',
+            parse_mode='HTML',
             reply_markup=keyboard
         )
     except Exception as e:
         logger.error(f"Failed to resend status GUI: {e}")
+

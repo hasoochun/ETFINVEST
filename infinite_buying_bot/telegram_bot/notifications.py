@@ -27,13 +27,13 @@ class TelegramNotifier:
         self.chat_id = chat_id
         logger.info(f"Telegram notifier initialized for chat_id: {chat_id}")
     
-    async def send_message(self, message: str, parse_mode: str = 'Markdown'):
+    async def send_message(self, message: str, parse_mode: str = 'HTML'):
         """
         Send a message to Telegram
         
         Args:
             message: Message text to send
-            parse_mode: Parse mode ('Markdown' or 'HTML')
+            parse_mode: Parse mode ('HTML' or 'Markdown')
         """
         try:
             await self.bot.send_message(
@@ -79,7 +79,7 @@ class TelegramNotifier:
     async def send_bot_started(self):
         """Send bot started notification"""
         message = (
-            "🚀 *Bot Started*\n"
+            "🚀 <b>Bot Started</b>\n"
             "━━━━━━━━━━━━━━━━━━━━\n"
             "Trading bot is now running.\n"
             "━━━━━━━━━━━━━━━━━━━━"
@@ -89,7 +89,7 @@ class TelegramNotifier:
     async def send_bot_stopped(self):
         """Send bot stopped notification"""
         message = (
-            "⏸️ *Bot Stopped*\n"
+            "⏸️ <b>Bot Stopped</b>\n"
             "━━━━━━━━━━━━━━━━━━━━\n"
             "Trading bot has been stopped.\n"
             "━━━━━━━━━━━━━━━━━━━━"
@@ -99,7 +99,7 @@ class TelegramNotifier:
     async def send_market_open(self):
         """Send market open notification"""
         message = (
-            "🟢 *Market Opened*\n"
+            "🟢 <b>Market Opened</b>\n"
             "━━━━━━━━━━━━━━━━━━━━\n"
             "Market is now open for trading.\n"
             "━━━━━━━━━━━━━━━━━━━━"
@@ -109,7 +109,7 @@ class TelegramNotifier:
     async def send_market_closed(self):
         """Send market closed notification"""
         message = (
-            "🔴 *Market Closed*\n"
+            "🔴 <b>Market Closed</b>\n"
             "━━━━━━━━━━━━━━━━━━━━\n"
             "Market has closed.\n"
             "━━━━━━━━━━━━━━━━━━━━"

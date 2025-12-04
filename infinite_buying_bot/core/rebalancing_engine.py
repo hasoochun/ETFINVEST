@@ -14,17 +14,24 @@ logger = logging.getLogger(__name__)
 class RebalancingEngine:
     """Implements infinite buying strategy with dynamic rebalancing"""
     
-    def __init__(self, portfolio_manager):
+    def __init__(self, portfolio_manager, accelerated=False):
         """
         Initialize rebalancing engine
         
         Args:
             portfolio_manager: PortfolioManager instance
+            accelerated: If True, use 3% profit target for faster testing
         """
         self.portfolio = portfolio_manager
+        self.is_accelerated = accelerated
         
         # TQQQ strategy parameters
-        self.tqqq_target_profit = 0.10  # +10% profit target
+        if accelerated:
+            self.tqqq_target_profit = 0.03  # +3% profit target (accelerated testing)
+            logger.info("⚡ Rebalancing Engine initialized with 3% profit target (ACCELERATED MODE)")
+        else:
+            self.tqqq_target_profit = 0.10  # +10% profit target (normal mode)
+            logger.info("Rebalancing Engine initialized with 10% profit target")
         
         # 40/80 split strategy (using SHV as buffer)
         # - Price < Avg: SHV / 40 (aggressive)
@@ -33,8 +40,6 @@ class RebalancingEngine:
         # Track TQQQ average price for infinite buying
         self.tqqq_entry_avg = 0.0
         self.tqqq_total_invested = 0.0
-        
-        logger.info("Rebalancing Engine initialized with 40/80 split strategy")
     
     def update_tqqq_average(self, quantity: int, price: float):
         """

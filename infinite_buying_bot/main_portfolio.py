@@ -5,6 +5,7 @@ import logging
 import yaml
 import asyncio
 from threading import Thread
+import argparse
 from dotenv import load_dotenv
 
 # Load .env file
@@ -110,7 +111,15 @@ def main():
     # Initialize portfolio components
     initial_capital = 100000000.0  # 1억
     portfolio_manager = PortfolioManager(initial_capital)
-    rebalancing_engine = RebalancingEngine(portfolio_manager)
+    
+    # Parse arguments first to determine mode
+    parser = argparse.ArgumentParser(description='Infinite Buying Bot')
+    parser.add_argument('--simulation', action='store_true', help='Run in simulation mode (1 min = 1 day)')
+    parser.add_argument('--accelerated', action='store_true', help='Run in accelerated mode (10 min = 1 day, 3% profit)')
+    args = parser.parse_args()
+    
+    # Initialize rebalancing engine with accelerated flag
+    rebalancing_engine = RebalancingEngine(portfolio_manager, accelerated=args.accelerated)
     
     # Initialize dashboard database
     set_initial_capital(initial_capital)
@@ -121,9 +130,24 @@ def main():
     bot_controller.set_trader(trader)
     bot_controller.set_notifier(notifier)
     
-    # Add portfolio manager to bot controller for Telegram UI
     bot_controller.portfolio_manager = portfolio_manager
     bot_controller.rebalancing_engine = rebalancing_engine
+    
+    # Set mode flags
+    if args.simulation:
+        bot_controller.is_simulation = True
+        bot_controller.is_running = True # Auto-start in simulation
+        bot_controller.start_time = datetime.now()
+        logger.info("🧪 SIMULATION MODE ACTIVATED: 1 minute = 1 day")
+        logger.info("🚀 Auto-starting bot for simulation...")
+    elif args.accelerated:
+        bot_controller.is_accelerated = True
+        bot_controller.is_running = True # Auto-start in accelerated mode
+        bot_controller.start_time = datetime.now()
+        logger.info("⚡ ACCELERATED MODE ACTIVATED: 10 minutes = 1 day, 3% profit target")
+        logger.info("🚀 Auto-starting bot for accelerated testing...")
+    
+    logger.info(f"DEBUG: BotController attributes: {dir(bot_controller)}")
     
     # Start Telegram bot in separate thread
     telegram_thread = Thread(target=start_telegram_bot, args=(bot_controller, config), daemon=True)
@@ -144,10 +168,17 @@ def main():
                 continue
             
             # 1. Check Market Status
-            if not scheduler.is_market_open():
-                logger.info("Market is closed. Sleeping...")
-                time.sleep(60)
-                continue
+            if not bot_controller.is_simulation:
+                if not scheduler.is_market_open():
+                    logger.info("Market is closed. Sleeping...")
+                    bot_controller.update_heartbeat() # Update heartbeat even when sleeping
+                    time.sleep(60)
+                    continue
+            else:
+                logger.info("🧪 Simulation Mode: Market always OPEN")
+
+            # Update heartbeat at start of loop
+            bot_controller.update_heartbeat()
 
             # 2. Get all prices and positions
             prices = trader.get_all_prices()
@@ -263,7 +294,14 @@ def main():
                     logger.debug("No rebalancing actions needed")
             
             # 7. Sleep before next iteration
-            time.sleep(10)
+            if bot_controller.is_simulation:
+                logger.info("🧪 Simulation: Sleeping for 60s (representing 1 day)...")
+                time.sleep(60)
+            elif bot_controller.is_accelerated:
+                logger.info("⚡ Accelerated: Sleeping for 600s (representing 1 day)...")
+                time.sleep(600)
+            else:
+                time.sleep(10)
 
         except KeyboardInterrupt:
             logger.info("Bot stopped by user.")

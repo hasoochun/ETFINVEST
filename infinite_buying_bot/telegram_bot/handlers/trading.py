@@ -19,14 +19,14 @@ async def stop_entry_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
         bot_controller.stop_entry()
         
         message = (
-            "🚫 *Entry Stopped*\n"
+            "🚫 <b>Entry Stopped</b>\n"
             "━━━━━━━━━━━━━━━━━━━━\n"
             "Bot will not enter new positions.\n"
             "Existing positions will be maintained.\n"
             "━━━━━━━━━━━━━━━━━━━━"
         )
         
-        await update.message.reply_text(message, parse_mode='Markdown')
+        await update.message.reply_text(message, parse_mode='HTML')
     except Exception as e:
         logger.error(f"Error in stop_entry_command: {e}")
         await update.message.reply_text(f"❌ Error: {str(e)}")
@@ -36,7 +36,7 @@ async def force_exit_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
     try:
         # Ask for confirmation
         message = (
-            "⚠️ *Force Exit Confirmation*\n"
+            "⚠️ <b>Force Exit Confirmation</b>\n"
             "━━━━━━━━━━━━━━━━━━━━\n"
             "This will sell ALL positions immediately.\n"
             "Are you sure?\n"
@@ -47,7 +47,7 @@ async def force_exit_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
         
         await update.message.reply_text(
             message,
-            parse_mode='Markdown',
+            parse_mode='HTML',
             reply_markup=keyboard
         )
     except Exception as e:
@@ -59,7 +59,7 @@ async def emergency_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         # Ask for confirmation
         message = (
-            "🚨 *EMERGENCY STOP*\n"
+            "🚨 <b>EMERGENCY STOP</b>\n"
             "━━━━━━━━━━━━━━━━━━━━\n"
             "This will:\n"
             "• Stop the bot immediately\n"
@@ -73,7 +73,7 @@ async def emergency_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         await update.message.reply_text(
             message,
-            parse_mode='Markdown',
+            parse_mode='HTML',
             reply_markup=keyboard
         )
     except Exception as e:

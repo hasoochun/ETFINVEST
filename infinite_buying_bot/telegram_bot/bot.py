@@ -91,7 +91,7 @@ class TradingTelegramBot:
             await self.application.bot.send_message(
                 chat_id=chat_id,
                 text=text,
-                parse_mode='Markdown',
+                parse_mode='HTML',
                 reply_markup=keyboard
             )
             logger.info(f"Startup GUI sent to {chat_id}")

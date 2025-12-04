@@ -41,30 +41,30 @@ def format_portfolio(portfolio_summary: dict) -> str:
             return "🔴"
     
     message = (
-        f"📊 *포트폴리오*\\n"
-        f"━━━━━━━━━━━━━━━━━━━━\\n"
-        f"총 자산: `${total_value:,.2f}`\\n"
-        f"수익률: `{portfolio_summary.get('total_return_pct', 0):+.2f}%`\\n"
-        f"━━━━━━━━━━━━━━━━━━━━\\n\\n"
+        f"📊 *포트폴리오*\n"
+        f"━━━━━━━━━━━━━━━━━━━━\n"
+        f"총 자산: `${total_value:,.2f}`\n"
+        f"수익률: `{portfolio_summary.get('total_return_pct', 0):+.2f}%`\n"
+        f"━━━━━━━━━━━━━━━━━━━━\n\n"
         
-        f"*TQQQ (나스닥 3x)*\\n"
-        f"보유: `{tqqq_qty} 주 @ ${tqqq_price:.2f}`\\n"
-        f"가치: `${tqqq_value:,.2f}`\\n"
-        f"비중: `{current_alloc.get('TQQQ', 0)*100:.1f}%` (목표: {target_alloc.get('TQQQ', 0)*100:.0f}%) {drift_indicator(drift.get('TQQQ', 0))}\\n\\n"
+        f"*TQQQ (나스닥 3x)*\n"
+        f"보유: `{tqqq_qty} 주 @ ${tqqq_price:.2f}`\n"
+        f"가치: `${tqqq_value:,.2f}`\n"
+        f"비중: `{current_alloc.get('TQQQ', 0)*100:.1f}%` (목표: {target_alloc.get('TQQQ', 0)*100:.0f}%) {drift_indicator(drift.get('TQQQ', 0))}\n\n"
         
-        f"*SHV (단기 국채)*\\n"
-        f"보유: `{shv_qty} 주 @ ${shv_price:.2f}`\\n"
-        f"가치: `${shv_value:,.2f}`\\n"
-        f"비중: `{current_alloc.get('SHV', 0)*100:.1f}%` (목표: {target_alloc.get('SHV', 0)*100:.0f}%) {drift_indicator(drift.get('SHV', 0))}\\n\\n"
+        f"*SHV (단기 국채)*\n"
+        f"보유: `{shv_qty} 주 @ ${shv_price:.2f}`\n"
+        f"가치: `${shv_value:,.2f}`\n"
+        f"비중: `{current_alloc.get('SHV', 0)*100:.1f}%` (목표: {target_alloc.get('SHV', 0)*100:.0f}%) {drift_indicator(drift.get('SHV', 0))}\n\n"
         
-        f"*SCHD (배당 성장)*\\n"
-        f"보유: `{schd_qty} 주 @ ${schd_price:.2f}`\\n"
-        f"가치: `${schd_value:,.2f}`\\n"
-        f"비중: `{current_alloc.get('SCHD', 0)*100:.1f}%` (목표: {target_alloc.get('SCHD', 0)*100:.0f}%) {drift_indicator(drift.get('SCHD', 0))}\\n\\n"
+        f"*SCHD (배당 성장)*\n"
+        f"보유: `{schd_qty} 주 @ ${schd_price:.2f}`\n"
+        f"가치: `${schd_value:,.2f}`\n"
+        f"비중: `{current_alloc.get('SCHD', 0)*100:.1f}%` (목표: {target_alloc.get('SCHD', 0)*100:.0f}%) {drift_indicator(drift.get('SCHD', 0))}\n\n"
         
-        f"*현금*\\n"
-        f"잔액: `${cash:,.2f}`\\n"
-        f"비중: `{current_alloc.get('CASH', 0)*100:.1f}%`\\n"
+        f"*현금*\n"
+        f"잔액: `${cash:,.2f}`\n"
+        f"비중: `{current_alloc.get('CASH', 0)*100:.1f}%`\n"
         f"━━━━━━━━━━━━━━━━━━━━"
     )
     
@@ -83,17 +83,17 @@ def format_rebalancing_plan(actions: list) -> str:
     """
     if not actions:
         return (
-            "⚖️ *리밸런싱*\\n"
-            "━━━━━━━━━━━━━━━━━━━━\\n"
-            "현재 리밸런싱이 필요하지 않습니다.\\n"
-            "포트폴리오가 목표 배분에 근접합니다.\\n"
+            "⚖️ *리밸런싱*\n"
+            "━━━━━━━━━━━━━━━━━━━━\n"
+            "현재 리밸런싱이 필요하지 않습니다.\n"
+            "포트폴리오가 목표 배분에 근접합니다.\n"
             "━━━━━━━━━━━━━━━━━━━━"
         )
     
     message = (
-        f"⚖️ *리밸런싱 계획*\\n"
-        f"━━━━━━━━━━━━━━━━━━━━\\n"
-        f"총 {len(actions)}개의 액션이 대기 중입니다:\\n\\n"
+        f"⚖️ *리밸런싱 계획*\n"
+        f"━━━━━━━━━━━━━━━━━━━━\n"
+        f"총 {len(actions)}개의 액션이 대기 중입니다:\n\n"
     )
     
     for i, action in enumerate(actions, 1):
@@ -101,32 +101,32 @@ def format_rebalancing_plan(actions: list) -> str:
         
         if action_type == 'profit_taking':
             message += (
-                f"{i}. 🎯 *수익 실현*\\n"
-                f"   매도: {action['sell_symbol']} (전량)\\n"
-                f"   수익: +{action['profit_pct']:.1f}%\\n"
-                f"   재투자: {action['buy_symbol']}\\n\\n"
+                f"{i}. 🎯 *수익 실현*\n"
+                f"   매도: {action['sell_symbol']} (전량)\n"
+                f"   수익: +{action['profit_pct']:.1f}%\n"
+                f"   재투자: {action['buy_symbol']}\n\n"
             )
         
         elif action_type == 'dip_buying':
             message += (
-                f"{i}. 📉 *추가 매수*\\n"
-                f"   매도: {action.get('sell_symbol')} ({action.get('sell_amount', 0):,.0f})\\n"
-                f"   매수: {action['buy_symbol']}\\n"
-                f"   이유: {action.get('reason', '')}\\n\\n"
+                f"{i}. 📉 *추가 매수*\n"
+                f"   매도: {action.get('sell_symbol')} ({action.get('sell_amount', 0):,.0f})\n"
+                f"   매수: {action['buy_symbol']}\n"
+                f"   이유: {action.get('reason', '')}\n\n"
             )
         
         elif action_type == 'interest_reinvest':
             message += (
-                f"{i}. 💰 *이자 재투자*\\n"
-                f"   매수: {action['buy_symbol']}\\n"
-                f"   금액: ${action.get('amount', 0):,.0f}\\n\\n"
+                f"{i}. 💰 *이자 재투자*\n"
+                f"   매수: {action['buy_symbol']}\n"
+                f"   금액: ${action.get('amount', 0):,.0f}\n\n"
             )
         
         elif action_type == 'rebalance':
             message += (
-                f"{i}. ⚖️ *리밸런싱*\\n"
-                f"   {action.get('action', 'buy').upper()}: {action['symbol']}\\n"
-                f"   금액: ${action.get('amount_krw', 0):,.0f}\\n\\n"
+                f"{i}. ⚖️ *리밸런싱*\n"
+                f"   {action.get('action', 'buy').upper()}: {action['symbol']}\n"
+                f"   금액: ${action.get('amount_krw', 0):,.0f}\n\n"
             )
     
     message += "━━━━━━━━━━━━━━━━━━━━"

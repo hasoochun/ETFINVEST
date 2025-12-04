@@ -17,15 +17,15 @@ def format_status(data: Dict) -> str:
     market_icon = "🟢" if data.get('market_open', False) else "🔴"
     
     message = (
-        f"🤖 *봇 상태*\n"
+        f"🤖 <b>봇 상태</b>\n"
         f"━━━━━━━━━━━━━━━━━━━━\n"
-        f"상태: `{status_icon} {data.get('status', 'UNKNOWN').upper()}`\n"
-        f"종목: `🎯 {data.get('trading_symbol', 'UNKNOWN')}`\n"
-        f"시장: `{market_icon} {data.get('market_status', 'UNKNOWN')}`\n"
-        f"모드: `📝 {data.get('mode', 'UNKNOWN').upper()}`\n"
-        f"가동시간: `{data.get('uptime', 'N/A')}`\n\n"
-        f"다음 개장: `{data.get('next_open', 'N/A')}`\n"
-        f"마지막 업데이트: `{data.get('last_update', 'N/A')}`\n"
+        f"상태: <code>{status_icon} {data.get('status', 'UNKNOWN').upper()}</code>\n"
+        f"종목: <code>🎯 {data.get('trading_symbol', 'UNKNOWN')}</code>\n"
+        f"시장: <code>{market_icon} {data.get('market_status', 'UNKNOWN')}</code>\n"
+        f"모드: <code>📝 {data.get('mode', 'UNKNOWN').upper()}</code>\n"
+        f"가동시간: <code>{data.get('uptime', 'N/A')}</code>\n\n"
+        f"다음 개장: <code>{data.get('next_open', 'N/A')}</code>\n"
+        f"마지막 업데이트: <code>{data.get('last_update', 'N/A')}</code>\n"
         f"━━━━━━━━━━━━━━━━━━━━"
     )
     return message
@@ -45,13 +45,13 @@ def format_balance(data: Dict) -> str:
     pnl_sign = "+" if pnl >= 0 else ""
     
     message = (
-        f"💰 *계좌 잔고*\n"
+        f"💰 <b>계좌 잔고</b>\n"
         f"━━━━━━━━━━━━━━━━━━━━\n"
-        f"현금:        `${data.get('cash', 0):,.2f}`\n"
-        f"주식:        `${data.get('stocks', 0):,.2f}`\n"
+        f"현금:        <code>${data.get('cash', 0):,.2f}</code>\n"
+        f"주식:        <code>${data.get('stocks', 0):,.2f}</code>\n"
         f"━━━━━━━━━━━━━━━━━━━━\n"
-        f"총액:        `${data.get('total', 0):,.2f}`\n"
-        f"손익:        `{pnl_icon} {pnl_sign}${pnl:,.2f} ({pnl_sign}{data.get('pnl_pct', 0):.2f}%)`\n"
+        f"총액:        <code>${data.get('total', 0):,.2f}</code>\n"
+        f"손익:        <code>{pnl_icon} {pnl_sign}${pnl:,.2f} ({pnl_sign}{data.get('pnl_pct', 0):.2f}%)</code>\n"
         f"━━━━━━━━━━━━━━━━━━━━"
     )
     return message
@@ -68,7 +68,7 @@ def format_position(data: Optional[Dict]) -> str:
     """
     if not data or data.get('quantity', 0) == 0:
         return (
-            "📈 *현재 포지션*\n"
+            "📈 <b>현재 포지션</b>\n"
             "━━━━━━━━━━━━━━━━━━━━\n"
             "보유 포지션 없음\n"
             "━━━━━━━━━━━━━━━━━━━━"
@@ -85,15 +85,15 @@ def format_position(data: Optional[Dict]) -> str:
     price_sign = "+" if price_change >= 0 else ""
     
     message = (
-        f"📈 *현재 포지션*\n"
+        f"📈 <b>현재 포지션</b>\n"
         f"━━━━━━━━━━━━━━━━━━━━\n"
-        f"종목:        `{data.get('symbol', 'N/A')}`\n"
-        f"수량:        `{data.get('quantity', 0)} 주`\n"
-        f"평균가:      `${avg_price:.2f}`\n"
-        f"현재가:      `${current_price:.2f} {price_icon} ({price_sign}{price_change:.2f}%)`\n"
+        f"종목:        <code>{data.get('symbol', 'N/A')}</code>\n"
+        f"수량:        <code>{data.get('quantity', 0)} 주</code>\n"
+        f"평균가:      <code>${avg_price:.2f}</code>\n"
+        f"현재가:      <code>${current_price:.2f} {price_icon} ({price_sign}{price_change:.2f}%)</code>\n"
         f"━━━━━━━━━━━━━━━━━━━━\n"
-        f"평가액:      `${data.get('value', 0):,.2f}`\n"
-        f"손익:        `{pnl_icon} {pnl_sign}${pnl:,.2f} ({pnl_sign}{data.get('pnl_pct', 0):.2f}%)`\n"
+        f"평가액:      <code>${data.get('value', 0):,.2f}</code>\n"
+        f"손익:        <code>{pnl_icon} {pnl_sign}${pnl:,.2f} ({pnl_sign}{data.get('pnl_pct', 0):.2f}%)</code>\n"
         f"━━━━━━━━━━━━━━━━━━━━"
     )
     return message
@@ -112,14 +112,14 @@ def format_trade_notification(trade_type: str, data: Dict) -> str:
     icon = "🟢" if trade_type == "BUY" else "🔴"
     
     message = (
-        f"{icon} *{trade_type} ORDER FILLED*\n"
+        f"{icon} <b>{trade_type} ORDER FILLED</b>\n"
         f"━━━━━━━━━━━━━━━━━━━━\n"
-        f"Symbol:      `{data.get('symbol', 'N/A')}`\n"
-        f"Quantity:    `{data.get('quantity', 0)} shares`\n"
-        f"Price:       `${data.get('price', 0):.2f}`\n"
-        f"Total:       `${data.get('total', 0):.2f}`\n"
+        f"Symbol:      <code>{data.get('symbol', 'N/A')}</code>\n"
+        f"Quantity:    <code>{data.get('quantity', 0)} shares</code>\n"
+        f"Price:       <code>${data.get('price', 0):.2f}</code>\n"
+        f"Total:       <code>${data.get('total', 0):.2f}</code>\n"
         f"━━━━━━━━━━━━━━━━━━━━\n"
-        f"Position:    `{data.get('position_qty', 0)} shares @ ${data.get('position_avg', 0):.2f}`\n"
+        f"Position:    <code>{data.get('position_qty', 0)} shares @ ${data.get('position_avg', 0):.2f}</code>\n"
         f"━━━━━━━━━━━━━━━━━━━━\n"
         f"⏰ {data.get('timestamp', datetime.now().strftime('%Y-%m-%d %H:%M:%S'))}"
     )
@@ -136,14 +136,14 @@ def format_profit_target_notification(data: Dict) -> str:
         Formatted profit notification
     """
     message = (
-        f"🎉 *PROFIT TARGET REACHED!*\n"
+        f"🎉 <b>PROFIT TARGET REACHED!</b>\n"
         f"━━━━━━━━━━━━━━━━━━━━\n"
-        f"Target:      `{data.get('target', 0):.1f}%`\n"
-        f"Achieved:    `{data.get('achieved', 0):.1f}%`\n"
+        f"Target:      <code>{data.get('target', 0):.1f}%</code>\n"
+        f"Achieved:    <code>{data.get('achieved', 0):.1f}%</code>\n"
         f"━━━━━━━━━━━━━━━━━━━━\n"
-        f"Avg Buy:     `${data.get('avg_buy', 0):.2f}`\n"
-        f"Current:     `${data.get('current', 0):.2f}`\n"
-        f"Profit:      `+${data.get('profit', 0):.2f}`\n"
+        f"Avg Buy:     <code>${data.get('avg_buy', 0):.2f}</code>\n"
+        f"Current:     <code>${data.get('current', 0):.2f}</code>\n"
+        f"Profit:      <code>+${data.get('profit', 0):.2f}</code>\n"
         f"━━━━━━━━━━━━━━━━━━━━\n"
         f"🔄 Selling all positions...\n"
         f"━━━━━━━━━━━━━━━━━━━━"
@@ -161,9 +161,9 @@ def format_error_notification(error: str) -> str:
         Formatted error notification
     """
     message = (
-        f"⚠️ *ERROR OCCURRED*\n"
+        f"⚠️ <b>ERROR OCCURRED</b>\n"
         f"━━━━━━━━━━━━━━━━━━━━\n"
-        f"`{error}`\n"
+        f"<code>{error}</code>\n"
         f"━━━━━━━━━━━━━━━━━━━━\n"
         f"Please check the logs."
     )
@@ -180,7 +180,7 @@ def format_daily_performance(data: list, days: int) -> str:
     Returns:
         Formatted daily performance message
     """
-    message = f"📊 *Daily Performance (Last {days} days)*\n"
+    message = f"📊 <b>Daily Performance (Last {days} days)</b>\n"
     message += "━━━━━━━━━━━━━━━━━━━━\n"
     
     total_pnl = 0
@@ -190,14 +190,14 @@ def format_daily_performance(data: list, days: int) -> str:
         date = day_data.get('date', 'N/A')
         sign = "+" if pnl >= 0 else ""
         
-        message += f"{date}:  `{sign}${pnl:.2f} ({sign}{pnl_pct:.1f}%)`\n"
+        message += f"{date}:  <code>{sign}${pnl:.2f} ({sign}{pnl_pct:.1f}%)</code>\n"
         total_pnl += pnl
     
     total_pct = sum(d.get('pnl_pct', 0) for d in data)
     sign = "+" if total_pnl >= 0 else ""
     
     message += "━━━━━━━━━━━━━━━━━━━━\n"
-    message += f"Total:       `{sign}${total_pnl:.2f} ({sign}{total_pct:.1f}%)`\n"
+    message += f"Total:       <code>{sign}${total_pnl:.2f} ({sign}{total_pct:.1f}%)</code>\n"
     message += "━━━━━━━━━━━━━━━━━━━━"
     
     return message
