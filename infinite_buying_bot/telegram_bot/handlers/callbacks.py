@@ -305,6 +305,63 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await query.edit_message_text(message, parse_mode='HTML')
             await _send_status_gui(context, query.message.chat_id, bot_controller)
         
+        elif query.data == 'show_dip_mode':
+            # Show dip buy mode selection
+            current_mode = bot_controller.dip_buy_mode
+            if current_mode == 'daily':
+                mode_text = "📅 일일 모드 (장종료 5분전)"
+                description = "하루 1회, 장 마감 5분 전에 매수합니다."
+            else:
+                mode_text = "🏃 가속 모드 (10분마다)"
+                description = "10분마다 매수 조건을 확인합니다."
+            
+            message = (
+                f"⚙️ <b>매수 모드 설정</b>\n"
+                f"━━━━━━━━━━━━━━━━━━━━\n"
+                f"현재 모드: {mode_text}\n"
+                f"\n"
+                f"{description}\n"
+                f"\n"
+                f"<b>모드 설명:</b>\n"
+                f"📅 일일 모드:\n"
+                f"  • 시간: 15:55-16:00 ET\n"
+                f"  • 주기: 하루 1회\n"
+                f"  • 용도: 실전 운용\n"
+                f"\n"
+                f"🏃 가속 모드:\n"
+                f"  • 시간: 10분마다\n"
+                f"  • 주기: 10분 간격\n"
+                f"  • 용도: 빠른 테스트\n"
+                f"━━━━━━━━━━━━━━━━━━━━"
+            )
+            
+            from ..formatters.keyboards import get_dip_mode_keyboard
+            await context.bot.send_message(
+                chat_id=query.message.chat_id,
+                text=message,
+                parse_mode='HTML',
+                reply_markup=get_dip_mode_keyboard()
+            )
+        
+        elif query.data.startswith('set_dip_mode_'):
+            # Change dip buy mode
+            mode = query.data.replace('set_dip_mode_', '')
+            bot_controller.set_dip_buy_mode(mode)
+            
+            if mode == 'daily':
+                mode_text = "📅 일일 모드"
+            else:
+                mode_text = "🏃 가속 모드"
+            
+            await context.bot.send_message(
+                chat_id=query.message.chat_id,
+                text=f"✅ 매수 모드 변경: {mode_text}",
+                parse_mode='HTML'
+            )
+            
+            # Show updated status
+            await _send_status_gui(context, query.message.chat_id, bot_controller)
+        
         elif query.data == 'back_to_status':
             status_data = bot_controller.get_status()
             message = format_status(status_data)

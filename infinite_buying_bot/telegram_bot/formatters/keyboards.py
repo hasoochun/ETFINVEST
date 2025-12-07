@@ -20,7 +20,7 @@ def get_status_keyboard() -> InlineKeyboardMarkup:
         ],
         [
             InlineKeyboardButton("🎯 ETF 선택", callback_data='show_etf_selection'),
-            InlineKeyboardButton("🔄 새로고침", callback_data='refresh_status')
+            InlineKeyboardButton("⚙️ 매수 모드", callback_data='show_dip_mode')
         ],
         [
             InlineKeyboardButton("💰 잔고", callback_data='show_balance'),
@@ -94,6 +94,26 @@ def get_confirmation_keyboard(action: str) -> InlineKeyboardMarkup:
         [
             InlineKeyboardButton("✅ Confirm", callback_data=f'confirm_{action}'),
             InlineKeyboardButton("❌ Cancel", callback_data='cancel')
+        ]
+    ]
+    return InlineKeyboardMarkup(keyboard)
+
+def get_dip_mode_keyboard() -> InlineKeyboardMarkup:
+    """
+    Get dip buy mode selection keyboard
+    
+    Returns:
+        InlineKeyboardMarkup with dip mode selection buttons
+    """
+    keyboard = [
+        [
+            InlineKeyboardButton("📅 일일 모드", callback_data='set_dip_mode_daily')
+        ],
+        [
+            InlineKeyboardButton("🏃 가속 모드", callback_data='set_dip_mode_accelerated')
+        ],
+        [
+            InlineKeyboardButton("◀️ 뒤로", callback_data='back_to_status')
         ]
     ]
     return InlineKeyboardMarkup(keyboard)
