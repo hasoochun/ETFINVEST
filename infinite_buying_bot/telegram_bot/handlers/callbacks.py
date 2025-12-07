@@ -41,10 +41,21 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
         
         elif query.data == 'show_balance':
-            balance_data = bot_controller.get_balance()
-            if getattr(bot_controller, 'trader', None):
-                balance_data['price_sources'] = getattr(bot_controller.trader, 'price_source', {})
-            message = format_balance(balance_data)
+            try:
+                balance_data = bot_controller.get_balance()
+                if getattr(bot_controller, 'trader', None):
+                    balance_data['price_sources'] = getattr(bot_controller.trader, 'price_source', {})
+                message = format_balance(balance_data)
+            except Exception as e:
+                logger.error(f"Error getting balance: {e}")
+                message = (
+                    "💰 <b>잔고 조회 오류</b>\n"
+                    "━━━━━━━━━━━━━━━━━━━━\n"
+                    "잔고 정보를 가져오는 중 오류가 발생했습니다.\n"
+                    f"오류: {str(e)}\n\n"
+                    "잠시 후 다시 시도해주세요.\n"
+                    "━━━━━━━━━━━━━━━━━━━━"
+                )
             await context.bot.send_message(
                 chat_id=query.message.chat_id,
                 text=message,
@@ -125,7 +136,11 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             # Get rebalancing actions from bot controller
             if getattr(bot_controller, 'rebalancing_engine', None):
                 actions = bot_controller.rebalancing_engine.get_rebalancing_actions()
-                message = format_rebalancing_plan(actions)
+                # Get portfolio summary for allocation display
+                portfolio_summary = None
+                if getattr(bot_controller, 'portfolio_manager', None):
+                    portfolio_summary = bot_controller.portfolio_manager.get_portfolio_summary()
+                message = format_rebalancing_plan(actions, portfolio_summary)
             else:
                 message = (
                     "⚖️ <b>리밸런싱</b>\n"

@@ -82,37 +82,100 @@ def format_portfolio(portfolio_summary: dict) -> str:
     return message
 
 
-def format_rebalancing_plan(actions: list) -> str:
+def format_rebalancing_plan(actions: list, portfolio_summary: dict = None) -> str:
     """
     Format rebalancing plan message
     
     Args:
         actions: List of rebalancing actions from RebalancingEngine
+        portfolio_summary: Optional portfolio summary for showing current allocations
         
     Returns:
         Formatted rebalancing plan message
     """
     if not actions:
-        return (
-            "⚖️ <b>리밸런싱 실행엔진</b>\n"
-            "━━━━━━━━━━━━━━━━━━━━\n"
-            "<b>💡 리밸런싱이란?</b> 목표 비중에서 벗어난 자산을 자동 조정합니다.\n\n"
-            "<b>📊 실행 조건:</b> 비중이 목표에서 ±10% 이상 벗어날 때\n"
-            "• 예: TQQQ 목표 30% → 현재 20% 또는 40%\n\n"
-            "<b>🎯 실행 예시:</b>\n"
-            "• TQQQ가 40%로 상승 → 10% 매도\n"
-            "• SHV가 40%로 하락 → 10% 매수\n"
-            "━━━━━━━━━━━━━━━━━━━━\n\n"
-            "<b>✅ 현재 상태:</b> 리밸런싱이 필요하지 않습니다.\n"
-            "포트폴리오가 목표 배분에 근접합니다.\n"
-            "━━━━━━━━━━━━━━━━━━━━"
-        )
+        # Show current allocation status even when no rebalancing needed
+        if portfolio_summary:
+            current_alloc = portfolio_summary.get('current_allocation', {})
+            target_alloc = portfolio_summary.get('target_allocation', {})
+            
+            message = (
+                "⚖️ <b>리밸런싱 실행엔진</b>\n"
+                "━━━━━━━━━━━━━━━━━━━━\n"
+                "<b>💡 리밸런싱이란?</b> 목표 비중에서 벗어난 자산을 자동 조정합니다.\n\n"
+                "<b>📊 현재 비중 vs 목표 비중:</b>\n"
+            )
+            
+            for symbol in ['TQQQ', 'SHV', 'SCHD']:
+                current = current_alloc.get(symbol, 0) * 100
+                target = target_alloc.get(symbol, 0) * 100
+                diff = current - target
+                diff_sign = "+" if diff >= 0 else ""
+                
+                # Add indicator
+                if abs(diff) >= 10:
+                    indicator = "🔴"
+                elif abs(diff) >= 5:
+                    indicator = "⚠️"
+                else:
+                    indicator = "✅"
+                
+                message += f"• {symbol}: `{current:.1f}%` (목표: {target:.0f}%) {diff_sign}{diff:.1f}% {indicator}\n"
+            
+            message += (
+                "\n━━━━━━━━━━━━━━━━━━━━\n\n"
+                "<b>✅ 현재 상태:</b> 리밸런싱이 필요하지 않습니다.\n"
+                "포트폴리오가 목표 배분에 근접합니다.\n"
+                "━━━━━━━━━━━━━━━━━━━━"
+            )
+            return message
+        else:
+            return (
+                "⚖️ <b>리밸런싱 실행엔진</b>\n"
+                "━━━━━━━━━━━━━━━━━━━━\n"
+                "<b>💡 리밸런싱이란?</b> 목표 비중에서 벗어난 자산을 자동 조정합니다.\n\n"
+                "<b>📊 실행 조건:</b> 비중이 목표에서 ±10% 이상 벗어날 때\n"
+                "• 예: TQQQ 목표 30% → 현재 20% 또는 40%\n\n"
+                "<b>🎯 실행 예시:</b>\n"
+                "• TQQQ가 40%로 상승 → 10% 매도\n"
+                "• SHV가 40%로 하락 → 10% 매수\n"
+                "━━━━━━━━━━━━━━━━━━━━\n\n"
+                "<b>✅ 현재 상태:</b> 리밸런싱이 필요하지 않습니다.\n"
+                "포트폴리오가 목표 배분에 근접합니다.\n"
+                "━━━━━━━━━━━━━━━━━━━━"
+            )
     
+    # Show allocation comparison when actions exist
     message = (
-        f"⚖️ *리밸런싱 계획*\n"
+        f"⚖️ <b>리밸런싱 실행엔진</b>\n"
         f"━━━━━━━━━━━━━━━━━━━━\n"
-        f"총 {len(actions)}개의 액션이 대기 중입니다:\n\n"
     )
+    
+    # Show current vs target allocation if portfolio summary is available
+    if portfolio_summary:
+        current_alloc = portfolio_summary.get('current_allocation', {})
+        target_alloc = portfolio_summary.get('target_allocation', {})
+        
+        message += f"<b>현재 비중 vs 목표 비중:</b>\n"
+        for symbol in ['TQQQ', 'SHV', 'SCHD']:
+            current = current_alloc.get(symbol, 0) * 100
+            target = target_alloc.get(symbol, 0) * 100
+            diff = current - target
+            diff_sign = "+" if diff >= 0 else ""
+            
+            # Add indicator
+            if abs(diff) >= 10:
+                indicator = "🔴"
+            elif abs(diff) >= 5:
+                indicator = "⚠️"
+            else:
+                indicator = "✅"
+            
+            message += f"• {symbol}: `{current:.1f}%` (목표: {target:.0f}%) {diff_sign}{diff:.1f}% {indicator}\n"
+        
+        message += f"\n총 {len(actions)}개의 액션이 대기 중입니다:\n\n"
+    else:
+        message += f"총 {len(actions)}개의 액션이 대기 중입니다:\n\n"
     
     for i, action in enumerate(actions, 1):
         action_type = action['action']
