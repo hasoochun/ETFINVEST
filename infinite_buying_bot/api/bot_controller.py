@@ -26,6 +26,11 @@ class BotController:
         self.is_simulation = False
         self.is_accelerated = False  # Accelerated testing mode (10 min = 1 day, 3% profit)
         self.last_update_time = datetime.now()
+        
+        # Dip buying mode settings
+        self.dip_buy_mode = 'accelerated'  # 'daily' or 'accelerated'
+        self.last_dip_buy_time = None
+        
         logger.info("Bot controller initialized")
     
     def set_trader(self, trader):
@@ -286,3 +291,52 @@ class BotController:
     def update_heartbeat(self):
         """Update the last update timestamp"""
         self.last_update_time = datetime.now()
+
+    def set_dip_buy_mode(self, mode: str):
+        """
+        Set dip buying mode
+        
+        Args:
+            mode: 'daily' or 'accelerated'
+        """
+        if mode not in ['daily', 'accelerated']:
+            raise ValueError("Mode must be 'daily' or 'accelerated'")
+        self.dip_buy_mode = mode
+        logger.info(f"Dip buy mode changed to: {mode}")
+    
+    def get_next_dip_buy_time(self) -> str:
+        """
+        Calculate next dip buy time based on mode
+        
+        Returns:
+            String describing next buy time
+        """
+        from datetime import timedelta
+        import pytz
+        
+        if self.dip_buy_mode == 'daily':
+            # Next market close - 5 minutes (15:55 ET)
+            et = pytz.timezone('US/Eastern')
+            now_et = datetime.now(et)
+            
+            # Create buy window time (15:55)
+            buy_time = now_et.replace(hour=15, minute=55, second=0, microsecond=0)
+            
+            # If past buy time today, show tomorrow
+            if now_et >= buy_time:
+                buy_time += timedelta(days=1)
+            
+            return buy_time.strftime("%H:%M ET")
+        else:
+            # Accelerated: 10 minutes from last buy
+            if self.last_dip_buy_time:
+                next_time = self.last_dip_buy_time + timedelta(minutes=10)
+                now = datetime.now()
+                
+                if next_time > now:
+                    remaining = (next_time - now).total_seconds() / 60
+                    return f"{int(remaining)}분 후"
+                else:
+                    return "즉시"
+            return "즉시"
+
