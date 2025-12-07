@@ -1,0 +1,63 @@
+# 🐞 Infinite Buying Bot - Backend Debugging Checklist
+
+이 문서는 `infinite_buying_bot` 프로젝트의 백엔드 안정성을 확보하기 위한 수동 디버깅 체크리스트입니다.
+
+## 1. 🔑 환경 설정 및 연결 (Environment & Auth)
+가장 기초적인 연결 상태를 점검합니다.
+
+- [ ] **`.env` 파일 점검**: `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`, `KIS` 관련 키들이 올바르게 들어있는지 확인.
+- [ ] **`kis_devlp.yaml` 설정**: 계좌번호 및 모의투자/실전투자 설정이 올바른지 확인.
+- [ ] **KIS API 토큰 발급 테스트**:
+    - `infinite_buying_bot/api/kis_auth.py`를 단독 실행하여 토큰이 정상 발급되는지 확인.
+    - 에러 발생 시: 앱키/시크릿키 유효성 및 URL(모의/실전) 일치 여부 확인.
+
+## 2. ⚙️ 핵심 로직 단위 테스트 (Core Logic)
+각 모듈이 독립적으로 잘 작동하는지 검증합니다.
+
+### A. Trader (거래 실행기)
+- [ ] **잔고 조회 (`get_balance`)**: 
+    - API를 통해 예수금과 보유 주식이 정확히 리턴되는지 확인.
+    - 특히 `buying_power`가 0으로 나오는 경우가 없는지 체크.
+- [ ] **현재가 조회 (`get_price`)**:
+    - `TQQQ`, `SHV`, `SCHD` 등 주요 종목의 가격을 잘 가져오는지 확인.
+    - KIS API 실패 시 Yahoo Finance 백업이 작동하는지 확인.
+- [ ] **주문 실행 (`buy`/`sell`)**:
+    - 장 중(혹은 모의투자)일 때 실제로 주문이 들어가는지 소액/1주 단위 테스트.
+
+### B. Scheduler (시간 관리) - *[최근 수정됨]*
+- [ ] **미국 시장 시간 확인**:
+    - `utils/scheduler.py`의 `is_market_open()`이 현재 시간(한국/미국)에 맞춰 정확한 True/False를 반환하는지 확인.
+    - `get_time_until_open()`이 주말/장마감 시 정확한 남은 시간을 계산하는지 확인.
+
+### C. Portfolio Manager (자산 배분)
+- [ ] **비중 계산 정확성**:
+    - 자산 총액 대비 TQQQ(30%), SHV(50%), SCHD(20%) 비중 계산이 수학적으로 맞는지 확인.
+    - 리밸런싱 트리거(오차 범위 5% 등)가 의도대로 작동하는지 로직 검증.
+
+## 3. 🧩 통합 및 제어 (Integration & Control)
+
+### Bot Controller
+- [ ] **상태 보고**: `get_status()` 호출 시 시장 상태, 모드(Sim/Real), 가동 시간이 올바르게 표시되는지 확인.
+- [ ] **스케줄러 연동**: Controller가 Scheduler를 통해 시장 개장 여부를 정확히 판단하는지 확인.
+
+### Database (Dashboard 연동)
+- [ ] **DB 생성**: 봇 실행 시 `dashboard/trading.db` 파일이 생성되거나 연결되는지 확인.
+- [ ] **데이터 기록**: 거래 발생 시 `trades` 테이블에, 주기적으로 `portfolio_snapshots` 테이블에 데이터가 쌓이는지 확인.
+
+## 4. 🚀 전체 시스템 시뮬레이션 (E2E Test)
+`main_portfolio.py`를 실행하여 전체 흐름을 봅니다.
+
+- [ ] **시뮬레이션 모드 실행**:
+    ```bash
+    python infinite_buying_bot/main_portfolio.py --simulation
+    ```
+    - 위 명령어로 실행 시, 시장이 닫혀있어도 강제로 봇이 루프를 도는지 확인.
+- [ ] **가속 모드 실행** (선택):
+    ```bash
+    python infinite_buying_bot/main_portfolio.py --accelerated
+    ```
+    - 빠르게 시간이 흐르는 것처럼 동작하며 매매가 일어나는지 확인.
+
+## 5. 🔔 알림 시스템 (Notification)
+- [ ] **텔레그램 메시지 수신**: 봇 시작, 매수/매도 발생 시 내 폰으로 알림이 오는지 확인.
+- [ ] **텔레그램 명령 반응**: `/status`, `/balance` 등의 명령어를 채팅방에 쳤을 때 봇이 응답하는지 확인.

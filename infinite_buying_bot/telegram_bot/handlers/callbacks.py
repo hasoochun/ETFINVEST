@@ -42,6 +42,8 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         elif query.data == 'show_balance':
             balance_data = bot_controller.get_balance()
+            if getattr(bot_controller, 'trader', None):
+                balance_data['price_sources'] = getattr(bot_controller.trader, 'price_source', {})
             message = format_balance(balance_data)
             await context.bot.send_message(
                 chat_id=query.message.chat_id,
@@ -52,6 +54,12 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         elif query.data == 'show_position':
             position_data = bot_controller.get_position()
+            # Inject source info
+            if getattr(bot_controller, 'trader', None):
+                symbol = position_data.get('symbol')
+                if symbol:
+                    position_data['price_source'] = getattr(bot_controller.trader, 'price_source', {}).get(symbol, 'KIS')
+            
             message = format_position(position_data)
             await context.bot.send_message(
                 chat_id=query.message.chat_id,
@@ -62,8 +70,20 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         elif query.data == 'show_portfolio':
             logger.info(f"DEBUG: Checking portfolio_manager in bot_controller. Dir: {dir(bot_controller)}")
-            if bot_controller.portfolio_manager:
+            if bot_controller.portfolio_manager and bot_controller.trader:
+                # Fetch fresh prices for all symbols
+                print("DEBUG: Fetching fresh prices for portfolio display...")
+                prices = bot_controller.trader.get_all_prices()
+                print(f"DEBUG: Fetched prices: {prices}")
+                
+                # Update portfolio manager with fresh prices
+                for symbol in ['TQQQ', 'SHV', 'SCHD']:
+                    if symbol in prices:
+                        current_pos = bot_controller.portfolio_manager.positions.get(symbol, {})
+                        current_pos['current_price'] = prices[symbol]
+                
                 summary = bot_controller.portfolio_manager.get_portfolio_summary()
+                summary['price_sources'] = getattr(bot_controller.trader, 'price_source', {})
                 message = format_portfolio(summary)
             else:
                 logger.error("DEBUG: portfolio_manager is None or missing")
@@ -92,7 +112,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         elif query.data == 'show_rebalance':
             # Get rebalancing actions from bot controller
-            if hasattr(bot_controller, 'rebalancing_engine'):
+            if getattr(bot_controller, 'rebalancing_engine', None):
                 actions = bot_controller.rebalancing_engine.get_rebalancing_actions()
                 message = format_rebalancing_plan(actions)
             else:
@@ -206,7 +226,8 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if "Message is not modified" in error_msg:
             return
             
-        logger.error(f"Error in button_callback: {e}")
+        import traceback
+        logger.error(f"Error in button_callback: {e}\n{traceback.format_exc()}")
         try:
             await query.edit_message_text(f"❌ Error: {error_msg}")
         except Exception:

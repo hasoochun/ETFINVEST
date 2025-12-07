@@ -118,9 +118,15 @@ class BotController:
                     target += timedelta(days=1)
                 
                 diff = target - now
-                hours = diff.seconds // 3600
-                minutes = (diff.seconds % 3600) // 60
-                next_open = f"{hours}h {minutes}m"
+                total_seconds = int(diff.total_seconds())
+                days = total_seconds // 86400
+                hours = (total_seconds % 86400) // 3600
+                minutes = (total_seconds % 3600) // 60
+                
+                if days > 0:
+                    next_open = f"{days}d {hours}h {minutes}m"
+                else:
+                    next_open = f"{hours}h {minutes}m"
 
         # Calculate last update time
         update_delta = datetime.now() - self.last_update_time

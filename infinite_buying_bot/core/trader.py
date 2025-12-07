@@ -16,33 +16,67 @@ class Trader:
         self.product = config.get('my_prod', '01')
         
         # Authenticate
-        ka.auth(svr=self.svr, product=self.product)
-        self.trenv = ka.getTREnv()
-        
         # Multi-symbol support
         self.symbol = config.get('strategy', {}).get('symbol', 'TQQQ')  # Default to TQQQ (portfolio strategy)
         self.symbols = ['TQQQ', 'SHV', 'SCHD']  # Portfolio symbols
         self.exchange = config.get('strategy', {}).get('exchange', 'NASD')
         self.currency = config.get('strategy', {}).get('currency', 'USD')
+        
+        # Track where the price came from (KIS or YF)
+        self.price_source = {} 
+        
+        try:
+            ka.auth(svr=self.svr, product=self.product)
+            self.trenv = ka.getTREnv()
+            # Double check that trenv is valid object
+            if isinstance(self.trenv, tuple) and not hasattr(self.trenv, 'my_acct'):
+                 raise Exception("Authentication incomplete: TRENV is still an empty tuple")
+            logger.info(f"Trader authenticated. Account: {self.trenv.my_acct}")
+        except Exception as e:
+            logger.error(f"Trader authentication failed: {e}")
+            raise e
 
     def get_price(self, symbol=None):
-        """Get current price for a symbol
-        
-        Args:
-            symbol: Symbol to get price for (default: self.symbol)
-        """
+        """Get current price for a symbol"""
         symbol = symbol or self.symbol
-        df = api.price(auth="", excd=self.exchange, symb=symbol, env_dv=self.env_mode)
-        if not df.empty:
-            return self._safe_float(df['last'].iloc[0])
-        return None
+        print(f"DEBUG: Getting price for {symbol}")
+        
+        # Try KIS API first
+        try:
+            df = api.price(auth="", excd=self.exchange, symb=symbol, env_dv=self.env_mode)
+            if not df.empty:
+                val = df['last'].iloc[0]
+                price = self._safe_float(val)
+                print(f"DEBUG: KIS price for {symbol}: {price} (Raw: {val})")
+                if price > 0:
+                    self.price_source[symbol] = 'KIS'
+                    return price
+            else:
+                print(f"DEBUG: KIS returned empty DF for {symbol}")
+        except Exception as e:
+            logger.warning(f"KIS API price fetch failed for {symbol}: {e}")
+            print(f"DEBUG: KIS Exception: {e}")
+            
+        # Fallback to Yahoo Finance
+        try:
+            print(f"DEBUG: Attempting YF fallback for {symbol}")
+            import yfinance as yf
+            ticker = yf.Ticker(symbol)
+            # Use fast_info for faster retrieval
+            price = ticker.fast_info.last_price
+            print(f"DEBUG: YF price for {symbol}: {price}")
+            
+            if price and price > 0:
+                self.price_source[symbol] = 'YF'  # Yahoo Finance
+                return price
+        except Exception as e:
+            logger.error(f"Yahoo Finance fallback failed for {symbol}: {e}")
+            print(f"DEBUG: YF Exception: {e}")
+            
+        return 0.0
     
     def get_all_prices(self):
-        """Get current prices for all portfolio symbols
-        
-        Returns:
-            Dict of {symbol: price}
-        """
+        """Get current prices for all portfolio symbols"""
         prices = {}
         for symbol in self.symbols:
             price = self.get_price(symbol)
@@ -64,8 +98,13 @@ class Trader:
 
     def get_balance(self):
         """Returns (buying_power, quantity, avg_price)"""
+        if isinstance(self.trenv, tuple) and not hasattr(self.trenv, 'my_acct'):
+            logger.error(f"CRITICAL: self.trenv is an empty tuple in get_balance! Type: {type(self.trenv)}")
+            raise ValueError("Authentication Lost: TRENV is invalid")
+            
         df1, df2 = api.inquire_balance(
-            cano=self.trenv.my_acct, 
+            cano=self.trenv.my_acct,
+ 
             acnt_prdt_cd=self.trenv.my_prod, 
             ovrs_excg_cd=self.exchange, 
             tr_crcy_cd=self.currency,

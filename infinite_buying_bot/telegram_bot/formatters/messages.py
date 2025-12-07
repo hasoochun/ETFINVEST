@@ -84,13 +84,16 @@ def format_position(data: Optional[Dict]) -> str:
     price_icon = "📈" if price_change >= 0 else "📉"
     price_sign = "+" if price_change >= 0 else ""
     
+    source = data.get('price_source', 'KIS')
+    source_icon = "🇺🇸" if source == 'YF' else "🇰🇷"
+    
     message = (
         f"📈 <b>현재 포지션</b>\n"
         f"━━━━━━━━━━━━━━━━━━━━\n"
         f"종목:        <code>{data.get('symbol', 'N/A')}</code>\n"
         f"수량:        <code>{data.get('quantity', 0)} 주</code>\n"
         f"평균가:      <code>${avg_price:.2f}</code>\n"
-        f"현재가:      <code>${current_price:.2f} {price_icon} ({price_sign}{price_change:.2f}%)</code>\n"
+        f"현재가:      <code>${current_price:.2f} {price_icon} ({price_sign}{price_change:.2f}%) {source_icon}</code>\n"
         f"━━━━━━━━━━━━━━━━━━━━\n"
         f"평가액:      <code>${data.get('value', 0):,.2f}</code>\n"
         f"손익:        <code>{pnl_icon} {pnl_sign}${pnl:,.2f} ({pnl_sign}{data.get('pnl_pct', 0):.2f}%)</code>\n"

@@ -40,6 +40,12 @@ def format_portfolio(portfolio_summary: dict) -> str:
         else:
             return "🔴"
     
+    price_sources = portfolio_summary.get('price_sources', {})
+    
+    def get_source_icon(symbol):
+        source = price_sources.get(symbol, 'KIS')
+        return "🇺🇸" if source == 'YF' else "🇰🇷"
+    
     message = (
         f"📊 *포트폴리오*\n"
         f"━━━━━━━━━━━━━━━━━━━━\n"
@@ -47,17 +53,17 @@ def format_portfolio(portfolio_summary: dict) -> str:
         f"수익률: `{portfolio_summary.get('total_return_pct', 0):+.2f}%`\n"
         f"━━━━━━━━━━━━━━━━━━━━\n\n"
         
-        f"*TQQQ (나스닥 3x)*\n"
+        f"*TQQQ (나스닥 3x)* {get_source_icon('TQQQ')}\n"
         f"보유: `{tqqq_qty} 주 @ ${tqqq_price:.2f}`\n"
         f"가치: `${tqqq_value:,.2f}`\n"
         f"비중: `{current_alloc.get('TQQQ', 0)*100:.1f}%` (목표: {target_alloc.get('TQQQ', 0)*100:.0f}%) {drift_indicator(drift.get('TQQQ', 0))}\n\n"
         
-        f"*SHV (단기 국채)*\n"
+        f"*SHV (단기 국채)* {get_source_icon('SHV')}\n"
         f"보유: `{shv_qty} 주 @ ${shv_price:.2f}`\n"
         f"가치: `${shv_value:,.2f}`\n"
         f"비중: `{current_alloc.get('SHV', 0)*100:.1f}%` (목표: {target_alloc.get('SHV', 0)*100:.0f}%) {drift_indicator(drift.get('SHV', 0))}\n\n"
         
-        f"*SCHD (배당 성장)*\n"
+        f"*SCHD (배당 성장)* {get_source_icon('SCHD')}\n"
         f"보유: `{schd_qty} 주 @ ${schd_price:.2f}`\n"
         f"가치: `${schd_value:,.2f}`\n"
         f"비중: `{current_alloc.get('SCHD', 0)*100:.1f}%` (목표: {target_alloc.get('SCHD', 0)*100:.0f}%) {drift_indicator(drift.get('SCHD', 0))}\n\n"

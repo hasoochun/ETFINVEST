@@ -1,0 +1,16 @@
+{
+  "status": "commited",
+  "type": "backend",
+  "scope": "codebase",
+  "localEndpoint": "http://localhost:8080",
+  "backendAuthType": "public",
+  "executionArgs": {
+    "projectName": "infinite_buying_bot",
+    "projectPath": "c:\\Users\\user\\.gemini\\antigravity\\scratch\\open-trading-api",
+    "testIds": [],
+    "additionalInstruction": "Mock the KIS API responses where possible to avoid real trading. Focus on logic verification.",
+    "envs": {
+      "API_KEY": "sk-user-vDqnKgm-3sCjY6Px8_87nlMntbdbgkLQTb3bL_UAVW9MHwQtHAfvV-WFKOrkJc2ipzkh0SDn_Ulg7laS_NHMjkauaMaoK6CY2m9YXoaiGW5kCCakPcFRBa9HeIkT24nQmlM"
+    }
+  }
+}

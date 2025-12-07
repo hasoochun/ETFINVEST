@@ -1,0 +1,52 @@
+[
+  {
+    "id": "TC001",
+    "title": "verify_kis_api_authentication_and_token_generation",
+    "description": "Test that KIS API authentication tokens are correctly generated and used for all API calls to ensure secure and authorized access."
+  },
+  {
+    "id": "TC002",
+    "title": "validate_trader_core_price_and_balance_retrieval",
+    "description": "Verify that the Trader Core module correctly fetches current prices and balances for assets TQQQ, SHV, and SCHD from the KIS API, and handles zero buying power errors gracefully."
+  },
+  {
+    "id": "TC003",
+    "title": "test_fallback_to_yahoo_finance_for_price_retrieval_failure",
+    "description": "Simulate KIS API price retrieval failure and verify that the system falls back to Yahoo Finance to obtain price data seamlessly without interrupting trading operations."
+  },
+  {
+    "id": "TC004",
+    "title": "check_portfolio_manager_allocation_and_rebalancing_trigger",
+    "description": "Ensure that the Portfolio Manager calculates asset allocation percentages accurately and triggers rebalancing trades when deviations exceed configured thresholds."
+  },
+  {
+    "id": "TC005",
+    "title": "validate_scheduler_market_open_detection_and_timing",
+    "description": "Test the Scheduler utility to confirm it accurately detects US market open/close status based on US/Eastern timezone and correctly calculates time until next market open."
+  },
+  {
+    "id": "TC006",
+    "title": "verify_bot_controller_telegram_command_responses",
+    "description": "Test that the Bot Controller correctly handles Telegram commands such as /status and /balance, returning accurate and timely responses to users."
+  },
+  {
+    "id": "TC007",
+    "title": "test_trade_execution_and_simulation_modes",
+    "description": "Verify that buy and sell orders are executed successfully during market hours and that simulation and accelerated run modes function correctly without dependence on actual market open times."
+  },
+  {
+    "id": "TC008",
+    "title": "check_database_integration_and_persistence",
+    "description": "Ensure that the SQLite database (dashboard/trading.db) is created or connected at bot start and that all trade activities and portfolio snapshots are persistently recorded for audit and analysis."
+  },
+  {
+    "id": "TC009",
+    "title": "validate_environment_variable_configuration_and_validation",
+    "description": "Test that environment variables including TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID, and KIS API keys are correctly set and validated by the bot before trading operations commence."
+  },
+  {
+    "id": "TC010",
+    "title": "verify_telegram_notifications_for_bot_events",
+    "description": "Ensure that the bot sends real-time Telegram notifications for key events such as bot start, trade executions, and error occurrences to keep users informed."
+  }
+]

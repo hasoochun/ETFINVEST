@@ -1,0 +1,41 @@
+{
+    "tech_stack": [
+        "python",
+        "pandas",
+        "requests",
+        "sqlite3",
+        "telegram-bot-api"
+    ],
+    "features": [
+        {
+            "name": "Trader Core",
+            "description": "Handles interaction with KIS API for getting prices, balances, and executing buy/sell orders.",
+            "files": [
+                "infinite_buying_bot/core/trader.py",
+                "infinite_buying_bot/api/kis_api.py"
+            ]
+        },
+        {
+            "name": "Portfolio Manager",
+            "description": "Manages asset allocation (TQQQ, SHV, SCHD) and calculates portfolio statistics.",
+            "files": [
+                "infinite_buying_bot/core/portfolio_manager.py",
+                "infinite_buying_bot/core/rebalancing_engine.py"
+            ]
+        },
+        {
+            "name": "Market Scheduler",
+            "description": "Determines if the US market is open using US/Eastern timezone logic.",
+            "files": [
+                "infinite_buying_bot/utils/scheduler.py"
+            ]
+        },
+        {
+            "name": "Bot Controller",
+            "description": "Controls the bot state and interfaces with Telegram.",
+            "files": [
+                "infinite_buying_bot/api/bot_controller.py"
+            ]
+        }
+    ]
+}

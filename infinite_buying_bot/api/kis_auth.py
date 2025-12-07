@@ -227,6 +227,7 @@ def auth(svr="prod", product=_cfg.get("my_prod", "01"), url=None):
             save_token(my_token, my_expired)
         else:
             print("Get Authentification token fail!\nYou have to restart your app!!!")
+            raise Exception("Authentication Failed: Could not get access token")
             return
     else:
         my_token = saved_token
