@@ -118,8 +118,8 @@ def main():
     parser.add_argument('--accelerated', action='store_true', help='Run in accelerated mode (10 min = 1 day, 3% profit)')
     args = parser.parse_args()
     
-    # Initialize rebalancing engine with accelerated flag
-    rebalancing_engine = RebalancingEngine(portfolio_manager, accelerated=args.accelerated)
+    # Initialize rebalancing engine
+    rebalancing_engine = RebalancingEngine(portfolio_manager)
     
     # Initialize dashboard database
     set_initial_capital(initial_capital)
