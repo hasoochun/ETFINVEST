@@ -54,13 +54,24 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         elif query.data == 'show_position':
             position_data = bot_controller.get_position()
-            # Inject source info
-            if getattr(bot_controller, 'trader', None):
-                symbol = position_data.get('symbol')
-                if symbol:
-                    position_data['price_source'] = getattr(bot_controller.trader, 'price_source', {}).get(symbol, 'KIS')
             
-            message = format_position(position_data)
+            # Check if position exists
+            if position_data is None:
+                message = (
+                    "📊 <b>포지션</b>\n"
+                    "━━━━━━━━━━━━━━━━━━━━\n"
+                    "현재 보유 중인 포지션이 없습니다.\n"
+                    "━━━━━━━━━━━━━━━━━━━━"
+                )
+            else:
+                # Inject source info
+                if getattr(bot_controller, 'trader', None):
+                    symbol = position_data.get('symbol')
+                    if symbol:
+                        position_data['price_source'] = getattr(bot_controller.trader, 'price_source', {}).get(symbol, 'KIS')
+                
+                message = format_position(position_data)
+            
             await context.bot.send_message(
                 chat_id=query.message.chat_id,
                 text=message,
@@ -153,12 +164,54 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await query.edit_message_text(message, parse_mode='HTML')
         
         elif query.data == 'start_bot':
+            # Send detailed strategy explanation
+            strategy_explanation = (
+                "🚀 <b>자동 매매 전략 상세 안내</b>\n"
+                "━━━━━━━━━━━━━━━━━━━━\n\n"
+                "<b>⏰ 가격 체크 방식:</b>\n"
+                "• <b>실시간 현재가 기준</b> (캔들 차트 X)\n"
+                "• 5분마다 현재 시장가 조회\n"
+                "• KIS API → 실패 시 Yahoo Finance\n\n"
+                "<b>📊 포트폴리오 구성:</b>\n"
+                "• TQQQ 30% (나스닥 3배 레버리지)\n"
+                "• SHV 50% (안전자산 + 매수자금)\n"
+                "• SCHD 20% (배당 성장)\n\n"
+                "<b>🎯 매매 규칙 (우선순위 순):</b>\n\n"
+                "<b>1. 수익 실현 (최우선)</b>\n"
+                "   조건: TQQQ 현재가 ≥ 평균가 × 1.10\n"
+                "   실행: TQQQ 전량 매도 → SCHD 재투자\n"
+                "   예시: 평균가 $50 → $55 도달 시 전량 매도\n\n"
+                "<b>2. 물타기 (40/80 분할)</b>\n"
+                "   <u>평균가 미만 (공격적)</u>\n"
+                "   • SHV 총액의 1/40 금액으로 매수\n"
+                "   • 예: SHV $100,000 → $2,500 매수\n\n"
+                "   <u>평균가 이상 (보수적)</u>\n"
+                "   • SHV 총액의 1/80 금액으로 매수\n"
+                "   • 예: SHV $100,000 → $1,250 매수\n\n"
+                "<b>3. 리밸런싱</b>\n"
+                "   조건: 비중이 목표에서 ±10% 벗어남\n"
+                "   실행: 목표 비중으로 자동 조정\n\n"
+                "<b>🕐 작동 시간:</b>\n"
+                "• 미국 장중: 월~금 23:30~06:00 (KST)\n"
+                "• 체크 주기: 5분마다\n"
+                "• 장 마감 시: 대기 상태\n\n"
+                "<b>✅ 이제 자동 매매를 시작합니다!</b>\n"
+                "━━━━━━━━━━━━━━━━━━━━"
+            )
+            
+            await context.bot.send_message(
+                chat_id=query.message.chat_id,
+                text=strategy_explanation,
+                parse_mode='HTML'
+            )
+            
+            # Start trading
             await bot_controller.start()
             message = (
                 "✅ <b>매매 시작</b>\n"
                 "━━━━━━━━━━━━━━━━━━━━\n"
                 "자동매매가 활성화되었습니다.\n"
-                "시장 개장 시 전략에 따라 거래를 시작합니다.\n"
+                "5분마다 실시간 가격을 체크합니다.\n"
                 "━━━━━━━━━━━━━━━━━━━━"
             )
             await query.edit_message_text(message, parse_mode='HTML')
@@ -190,12 +243,32 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         elif query.data.startswith('select_etf_'):
             etf_symbol = query.data.split('_')[-1]
+            
+            # Update bot controller
             bot_controller.trading_symbol = etf_symbol
             
+            # Reinitialize portfolio manager with new ETF
+            if bot_controller.portfolio_manager:
+                from infinite_buying_bot.core.portfolio_manager import PortfolioManager
+                from infinite_buying_bot.core.rebalancing_engine import RebalancingEngine
+                
+                bot_controller.portfolio_manager = PortfolioManager(
+                    initial_capital=bot_controller.portfolio_manager.initial_capital,
+                    aggressive_etf=etf_symbol
+                )
+                
+                # Reinitialize rebalancing engine
+                bot_controller.rebalancing_engine = RebalancingEngine(
+                    bot_controller.portfolio_manager,
+                    accelerated=bot_controller.is_accelerated
+                )
+            
             etf_names = {
-                'TQQQ': '나스닥 3x 레버리지',
-                'SHV': '단기 국채 ETF',
-                'SCHD': '고배당 성장 ETF'
+                'TQQQ': '나스닥 3배 레버리지',
+                'MAGS': 'M7 전용 ETF',
+                'QQQ': '나스닥 100',
+                'SPY': 'S&P 500',
+                'VOO': 'S&P 500 저비용'
             }
             
             message = (
@@ -203,7 +276,15 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"━━━━━━━━━━━━━━━━━━━━\n"
                 f"선택된 ETF: <b>{etf_symbol}</b>\n"
                 f"({etf_names.get(etf_symbol, 'Unknown')})\n\n"
-                f"다음 거래부터 적용됩니다.\n"
+                f"<b>📊 포트폴리오 구성:</b>\n"
+                f"• {etf_symbol} 30% (단기 매매)\n"
+                f"• SHV 50% (안전 자산)\n"
+                f"• SCHD 20% (장기 보유)\n\n"
+                f"<b>🎯 매매 전략:</b>\n"
+                f"• {etf_symbol} +10% 도달 → 전량 매도 → SCHD 재투자\n"
+                f"• {etf_symbol} 하락 시 → SHV로 물타기 (40/80 분할)\n"
+                f"• 비중 ±10% 벗어나면 자동 리밸런싱\n\n"
+                f"다음 리밸런싱부터 적용됩니다.\n"
                 f"━━━━━━━━━━━━━━━━━━━━"
             )
             await query.edit_message_text(message, parse_mode='HTML')

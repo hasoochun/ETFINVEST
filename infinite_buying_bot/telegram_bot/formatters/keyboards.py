@@ -41,10 +41,16 @@ def get_etf_selection_keyboard() -> InlineKeyboardMarkup:
             InlineKeyboardButton("📈 TQQQ (나스닥 3x)", callback_data='select_etf_TQQQ')
         ],
         [
-            InlineKeyboardButton("💵 SHV (단기 국채)", callback_data='select_etf_SHV')
+            InlineKeyboardButton("🌟 MAGS (M7 전용)", callback_data='select_etf_MAGS')
         ],
         [
-            InlineKeyboardButton("💎 SCHD (배당)", callback_data='select_etf_SCHD')
+            InlineKeyboardButton("💎 QQQ (나스닥 100)", callback_data='select_etf_QQQ')
+        ],
+        [
+            InlineKeyboardButton("🏛️ SPY (S&P 500)", callback_data='select_etf_SPY')
+        ],
+        [
+            InlineKeyboardButton("💰 VOO (S&P 500 저비용)", callback_data='select_etf_VOO')
         ],
         [
             InlineKeyboardButton("◀️ 뒤로", callback_data='back_to_status')
