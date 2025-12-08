@@ -88,13 +88,28 @@ def start_telegram_bot(bot_controller, config):
     asyncio.set_event_loop(loop)
     loop.run_until_complete(run_bot())
 
+from infinite_buying_bot.utils.process_singleton import ProcessSingleton
+
 def main():
+    # Ensure only one instance runs at a time
+    pid_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), '.bot.pid')
+    singleton = ProcessSingleton(pid_file, "InfinityBuyingBot")
+    
+    try:
+        if not singleton.acquire():
+            logger.error("Another bot instance is running and couldn't be terminated. Exiting.")
+            return
+    except Exception as e:
+        logger.error(f"Failed to acquire singleton lock: {e}")
+        return
+    
     logger.info("Initializing Portfolio-Based Infinite Buying Bot...")
     
     try:
         config = load_config()
     except Exception as e:
         logger.error(f"Failed to load config: {e}")
+        singleton.release()
         return
 
     # Initialize components
@@ -118,17 +133,17 @@ def main():
     parser.add_argument('--accelerated', action='store_true', help='Run in accelerated mode (10 min = 1 day, 3% profit)')
     args = parser.parse_args()
     
-    # Initialize rebalancing engine
-    rebalancing_engine = RebalancingEngine(portfolio_manager)
+    # Initialize bot controller first
+    bot_controller = BotController()
+    bot_controller.set_trader(trader)
+    bot_controller.set_notifier(notifier)
+    
+    # Initialize rebalancing engine with bot_controller
+    rebalancing_engine = RebalancingEngine(portfolio_manager, bot_controller)
     
     # Initialize dashboard database
     set_initial_capital(initial_capital)
     logger.info("Dashboard database initialized")
-    
-    # Initialize bot controller
-    bot_controller = BotController()
-    bot_controller.set_trader(trader)
-    bot_controller.set_notifier(notifier)
     
     bot_controller.portfolio_manager = portfolio_manager
     bot_controller.rebalancing_engine = rebalancing_engine
@@ -234,7 +249,53 @@ def main():
                 except Exception as e:
                     logger.error(f"Failed to log portfolio snapshot: {e}")
             
-            # 6. Check for rebalancing actions
+            # 5.5 Check for SHV interest reinvestment (Monthly)
+            # This is a simplified check - in reality we'd check transaction history or date
+            # For now, we rely on the manual rebalancing or drift to handle major moves,
+            # but we can explicitly check if SHV value is much higher than target due to interest
+            # However, the strategy definition says "Interest from SHV -> Buy SCHD"
+            # Since we don't have exact interest payment data from API easily, 
+            # we will rely on the Rebalancing Logic (Drift) to handle this naturally for now
+            # consistently with the architecture.
+            # But to be precise, let's allow the engine to check if it wants to.
+            if bot_controller.entry_allowed:
+                 # We don't have a specific trigger for interest yet, 
+                 # so we'll leave this to the "Rebalancing Actions" drift check which handles 
+                 # "SHV > 50%" by selling SHV and buying others.
+                 pass
+            
+            # 6. Check for dip buying (BEFORE rebalancing)
+            if bot_controller.entry_allowed:
+                try:
+                    # Check dip buying with time and price conditions
+                    dip_buy_action = rebalancing_engine.check_tqqq_dip_buying()
+                    
+                    if dip_buy_action:
+                        logger.info(f"💰 Dip buying triggered: {dip_buy_action['reason']}")
+                        
+                        # Execute the action
+                        success = rebalancing_engine.execute_action(dip_buy_action, trader)
+                        
+                        if success:
+                            # Update last dip buy time on success
+                            bot_controller.last_dip_buy_time = datetime.now()
+                            logger.info("✅ Dip buy executed successfully, timestamp updated")
+                            
+                            # Log to database
+                            log_rebalancing_action(dip_buy_action)
+                            
+                            # Log trade
+                            log_trade(
+                                "buy",
+                                dip_buy_action['buy_symbol'],
+                                dip_buy_action['sell_amount'], # Approx buy value
+                                dip_buy_action['current_price'],
+                                0.0 # Commission not tracked here
+                            )
+                except Exception as e:
+                    logger.error(f"❌ Failed to execute dip buy: {e}")
+
+            # 7. Check for rebalancing actions
             if bot_controller.entry_allowed:
                 actions = rebalancing_engine.get_rebalancing_actions()
                 
@@ -305,11 +366,15 @@ def main():
 
         except KeyboardInterrupt:
             logger.info("Bot stopped by user.")
+            singleton.release()
             break
         except Exception as e:
             logger.error(f"Unexpected error: {e}")
             notifier.send(f"Bot Error: {e}")
             time.sleep(60)
+    
+    # Cleanup on exit
+    singleton.release()
 
 if __name__ == "__main__":
     main()

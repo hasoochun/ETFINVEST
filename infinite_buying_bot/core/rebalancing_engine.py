@@ -14,14 +14,16 @@ logger = logging.getLogger(__name__)
 class RebalancingEngine:
     """Implements infinite buying strategy with dynamic rebalancing"""
     
-    def __init__(self, portfolio_manager):
+    def __init__(self, portfolio_manager, bot_controller=None):
         """
         Initialize rebalancing engine
         
         Args:
             portfolio_manager: PortfolioManager instance
+            bot_controller: BotController instance (for dip buy mode)
         """
         self.portfolio = portfolio_manager
+        self.bot_controller = bot_controller
         
         # TQQQ strategy parameters
         self.tqqq_target_profit = 0.10  # +10% profit target
@@ -101,10 +103,48 @@ class RebalancingEngine:
         """
         Check if TQQQ should be bought using SHV buffer
         Uses 40/80 split strategy based on average price
+        Includes time-based conditions for daily/accelerated modes
         
         Returns:
             Trade action dict if buying needed, None otherwise
         """
+        # === TIME-BASED CHECK ===
+        if self.bot_controller:
+            import pytz
+            from datetime import timedelta
+            
+            mode = self.bot_controller.dip_buy_mode
+            last_buy_time = self.bot_controller.last_dip_buy_time
+            now = datetime.now()
+            
+            if mode == 'daily':
+                # Check if it's 15:55-16:00 ET
+                et = pytz.timezone('US/Eastern')
+                now_et = now.astimezone(et)
+                
+                if not (now_et.hour == 15 and 55 <= now_et.minute < 60):
+                    # logger.debug(f"Daily mode: Not in buy window (current: {now_et.strftime('%H:%M')} ET)")
+                    return None
+                
+                # Check if already bought today
+                if last_buy_time and last_buy_time.date() == now.date():
+                    logger.debug("Daily mode: Already bought today")
+                    return None
+                
+                logger.info(f"✅ Daily mode: In buy window ({now_et.strftime('%H:%M')} ET)")
+            
+            elif mode == 'accelerated':
+                # Check if 10 minutes elapsed
+                if last_buy_time:
+                    elapsed_minutes = (now - last_buy_time).total_seconds() / 60
+                    if elapsed_minutes < 10:
+                        # logger.debug(f"Accelerated mode: Only {elapsed_minutes:.1f} min elapsed (need 10)")
+                        return None
+                
+                logger.info("✅ Accelerated mode: 10 minutes elapsed or first buy")
+        else:
+            logger.warning("BotController not set, skipping time-based check")
+
         tqqq_pos = self.portfolio.positions['TQQQ']
         shv_pos = self.portfolio.positions['SHV']
         
