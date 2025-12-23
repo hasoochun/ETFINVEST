@@ -4,6 +4,7 @@ import time
 import logging
 import yaml
 import asyncio
+from datetime import datetime, timedelta
 from threading import Thread
 from dotenv import load_dotenv
 
@@ -201,24 +202,38 @@ def main():
                 time.sleep(60)
                 continue
 
-            # 4. Buy Logic (Near Close)
+            # 4. Buy Logic - Accelerated or Daily Mode
             is_near_close = scheduler.is_near_close(minutes=5)
-            should_buy, split_count = strategy.should_buy(current_price, avg_price, quantity, is_near_close)
+            
+            # Check accelerated mode (buy every 10 minutes)
+            force_buy = False
+            if bot_controller.dip_buy_mode == 'accelerated':
+                now = datetime.now()
+                last_buy = bot_controller.last_dip_buy_time
+                if last_buy is None or (now - last_buy) >= timedelta(minutes=10):
+                    force_buy = True
+                    logger.info("⚡ Accelerated mode: 10 minutes elapsed, forcing buy check")
+            
+            should_buy, split_count = strategy.should_buy(current_price, avg_price, quantity, is_near_close, force_buy)
             
             if should_buy and split_count > 0 and bot_controller.entry_allowed:
                 buy_amount = buying_power / split_count
                 buy_qty = int(buy_amount / current_price)
                 
                 if buy_qty > 0:
-                    trader.buy(buy_amount)
+                    # Fixed: pass symbol to trader.buy()
+                    trader.buy(bot_controller.trading_symbol, buy_amount)
+                    
+                    # Update last dip buy time for accelerated mode
+                    bot_controller.last_dip_buy_time = datetime.now()
                     
                     # Log to dashboard with selected ETF
                     log_trade(
                         "buy",
-                        bot_controller.trading_symbol,  # Use selected ETF
+                        bot_controller.trading_symbol,
                         buy_qty,
                         current_price,
-                        reason="Strategy signal"
+                        reason=f"{'Accelerated' if force_buy else 'Daily'} mode signal"
                     )
                     logger.info(f"Buy logged to dashboard: {bot_controller.trading_symbol} {buy_qty} @ ${current_price:.2f}")
                     

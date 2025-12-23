@@ -6,12 +6,15 @@ class InfiniteBuyingStrategy:
         self.split_count_low = config.get('strategy', {}).get('split_count_low', 80)
         self.split_count_high = config.get('strategy', {}).get('split_count_high', 40)
 
-    def should_buy(self, current_price, avg_price, quantity, is_near_close):
+    def should_buy(self, current_price, avg_price, quantity, is_near_close, force_buy=False):
         """
         Determine if we should buy and how much (split count).
         Returns: (should_buy, split_count)
+        
+        Args:
+            force_buy: If True, bypass time check (for accelerated mode)
         """
-        if not is_near_close:
+        if not is_near_close and not force_buy:
             return False, 0
 
         # If we have no holdings, treat as "Price < Avg" (Aggressive 40 splits) or "Initial Entry"

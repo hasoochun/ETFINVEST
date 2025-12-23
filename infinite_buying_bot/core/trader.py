@@ -1,3 +1,7 @@
+# -*- coding: utf-8 -*-
+"""
+Trader Module (Production Only / Clean Version)
+"""
 import logging
 import time
 from infinite_buying_bot.api import kis_api as api
@@ -9,366 +13,121 @@ class Trader:
     def __init__(self, config, notifier):
         self.config = config
         self.notifier = notifier
-        self.env_mode = "demo" # Default to demo, user should change in main or config
         
-        # Load Account Info
-        self.svr = 'vps' if self.env_mode == 'demo' else 'prod'
-        self.product = config.get('my_prod', '01')
+        logger.info("🟢 TRADER (REAL) STARTING...")
         
         # Authenticate
-        # Multi-symbol support
-        self.symbol = config.get('strategy', {}).get('symbol', 'TQQQ')  # Default to TQQQ (portfolio strategy)
-        self.symbols = ['TQQQ', 'SHV', 'SCHD']  # Portfolio symbols
-        self.exchange = config.get('strategy', {}).get('exchange', 'NASD')
-        self.currency = config.get('strategy', {}).get('currency', 'USD')
-        
-        # Track where the price came from (KIS or YF)
-        self.price_source = {} 
-        
         try:
-            ka.auth(svr=self.svr, product=self.product)
-            self.trenv = ka.getTREnv()
-            # Double check that trenv is valid object
-            if isinstance(self.trenv, tuple) and not hasattr(self.trenv, 'my_acct'):
-                 raise Exception("Authentication incomplete: TRENV is still an empty tuple")
-            logger.info(f"Trader authenticated. Account: {self.trenv.my_acct}")
+            self.trenv = ka.auth() # No args needed, defaults to prod
         except Exception as e:
-            logger.error(f"Trader authentication failed: {e}")
+            logger.critical(f"FATAL: Auth Failed: {e}")
             raise e
-
-    def get_price(self, symbol=None):
-        """Get current price for a symbol"""
-        symbol = symbol or self.symbol
-        print(f"DEBUG: Getting price for {symbol}")
+            
+        # Config
+        self.symbol = "TQQQ" # Default
+        self.symbols = ["TQQQ", "MAGS", "SHV", "JEPI"]
+        self.exchange = "NASD"
+        self.currency = "USD"
         
-        # Try KIS API first
-        try:
-            df = api.price(auth="", excd=self.exchange, symb=symbol, env_dv=self.env_mode)
-            if not df.empty:
-                val = df['last'].iloc[0]
-                price = self._safe_float(val)
-                print(f"DEBUG: KIS price for {symbol}: {price} (Raw: {val})")
-                if price > 0:
-                    self.price_source[symbol] = 'KIS'
-                    return price
-            else:
-                print(f"DEBUG: KIS returned empty DF for {symbol}")
-        except Exception as e:
-            logger.warning(f"KIS API price fetch failed for {symbol}: {e}")
-            print(f"DEBUG: KIS Exception: {e}")
-            
-        # Fallback to Yahoo Finance
-        try:
-            print(f"DEBUG: Attempting YF fallback for {symbol}")
-            import yfinance as yf
-            ticker = yf.Ticker(symbol)
-            # Use fast_info for faster retrieval
-            price = ticker.fast_info.last_price
-            print(f"DEBUG: YF price for {symbol}: {price}")
-            
-            if price and price > 0:
-                self.price_source[symbol] = 'YF'  # Yahoo Finance
-                return price
-        except Exception as e:
-            logger.error(f"Yahoo Finance fallback failed for {symbol}: {e}")
-            print(f"DEBUG: YF Exception: {e}")
-            
-        return 0.0
-    
-    def get_all_prices(self):
-        """Get current prices for all portfolio symbols"""
-        prices = {}
-        for symbol in self.symbols:
-            price = self.get_price(symbol)
-            if price:
-                prices[symbol] = price
-        return prices
+        # Force Real Mode
+        self.env_mode = 'real'
 
-    def _safe_float(self, value):
-        try:
-            return float(value) if value else 0.0
-        except (ValueError, TypeError):
-            return 0.0
-
-    def _safe_int(self, value):
-        try:
-            return int(value) if value else 0
-        except (ValueError, TypeError):
-            return 0
+    def get_price(self, symbol):
+        return api.get_current_price(self.trenv, self.exchange, symbol)
 
     def get_balance(self):
-        """Returns (buying_power, quantity, avg_price)"""
-        if isinstance(self.trenv, tuple) and not hasattr(self.trenv, 'my_acct'):
-            logger.error(f"CRITICAL: self.trenv is an empty tuple in get_balance! Type: {type(self.trenv)}")
-            raise ValueError("Authentication Lost: TRENV is invalid")
-            
-        df1, df2 = api.inquire_balance(
-            cano=self.trenv.my_acct,
- 
-            acnt_prdt_cd=self.trenv.my_prod, 
-            ovrs_excg_cd=self.exchange, 
-            tr_crcy_cd=self.currency,
-            env_dv=self.env_mode
-        )
-        
-        buying_power = 0.0
-        quantity = 0
-        avg_price = 0.0
-        
-        if not df1.empty:
-            # DEBUG: Log available columns and first row to find correct balance field
-            print(f"DEBUG: Balance DF1 Columns: {df1.columns.tolist()}")
-            try:
-                print(f"DEBUG: Balance DF1 Row 0: {df1.iloc[0].to_dict()}")
-            except Exception as e:
-                print(f"DEBUG: Failed to log DF1 row: {e}")
-            
-            # Try to find buying power column (varies by API version/account)
-            # Common: frcr_ord_psbl_amt1 (Foreign Currency Order Possible Amount)
-            # Also check: dnca_tot_amt (Deposit Total Amount), tot_evlu_amt (Total Evaluation Amount)
-            if 'frcr_ord_psbl_amt1' in df1.columns:
-                buying_power = self._safe_float(df1['frcr_ord_psbl_amt1'].iloc[0])
-            elif 'ovrs_ord_psbl_amt' in df1.columns:
-                buying_power = self._safe_float(df1['ovrs_ord_psbl_amt'].iloc[0])
-            elif 'dnca_tot_amt' in df1.columns:
-                buying_power = self._safe_float(df1['dnca_tot_amt'].iloc[0])
-            elif 'nxdy_excc_amt' in df1.columns:
-                buying_power = self._safe_float(df1['nxdy_excc_amt'].iloc[0])
-            elif 'tot_evlu_amt' in df1.columns:
-                buying_power = self._safe_float(df1['tot_evlu_amt'].iloc[0])
-        else:
-            print("DEBUG: Balance DF1 is EMPTY - API returned no data for output1")
-                
-        if not df2.empty:
-            target = df2[df2['ovrs_pdno'] == self.symbol]
-            if not target.empty:
-                quantity = self._safe_int(target['ovrs_cblc_qty'].iloc[0])
-                avg_price = self._safe_float(target['pchs_avg_pric'].iloc[0])
-                
-        return buying_power, quantity, avg_price
+        """Returns: (cash, quantity_of_main_symbol, avg_price_of_main_symbol)"""
+        cash = 0.0
+        qty = 0
+        avg = 0.0
+        try:
+            # 1. Cash using dummy price 100
+            df = api.inquire_psamount(
+                self.trenv.my_acct, 
+                self.trenv.my_prod, 
+                self.exchange, 
+                "100.0", 
+                self.symbol
+            )
+            if df is not None:
+                # Check known columns
+                for col in ['frcr_ord_psbl_amt1', 'ovrs_ord_psbl_amt']:
+                    if col in df.columns:
+                        cash = float(df[col].iloc[0])
+                        break
+        except Exception as e:
+            logger.error(f"Balance(Cash) Error: {e}")
 
-    def get_all_holdings(self) -> list:
-        """Get all current holdings
-        
-        Returns:
-            List of dictionaries containing holding details:
-            [{'symbol': 'TQQQ', 'qty': 10, 'avg_price': 30.5, 'current_price': 32.0, 'value': 320.0}, ...]
-        """
-        df1, df2 = api.inquire_balance(
-            cano=self.trenv.my_acct,
-            acnt_prdt_cd=self.trenv.my_prod,
-            ovrs_excg_cd=self.exchange,
-            tr_crcy_cd=self.currency,
-            env_dv=self.env_mode
-        )
-        
-        holdings = []
-        if not df2.empty:
-            for _, row in df2.iterrows():
-                symbol = row['ovrs_pdno']
-                qty = self._safe_int(row['ovrs_cblc_qty'])
-                avg_price = self._safe_float(row['pchs_avg_pric'])
-                
-                # Get current price
-                current_price = self.get_price(symbol)
-                if not current_price:
-                    current_price = avg_price
-                
-                if qty > 0:
-                    holdings.append({
-                        'symbol': symbol,
-                        'qty': qty,
-                        'avg_price': avg_price,
-                        'current_price': current_price,
-                        'value': qty * current_price
-                    })
-                    
-        return holdings
-    
-    def get_position(self, symbol):
-        """Get position for a specific symbol
-        
-        Args:
-            symbol: Symbol to get position for
+        try:
+            # 2. Holdings
+            df1, _ = api.inquire_balance(
+                self.trenv.my_acct, 
+                self.trenv.my_prod, 
+                self.exchange, 
+                self.currency
+            )
+            if df1 is not None and not df1.empty:
+                row = df1[df1['ovrs_pdno'] == self.symbol]
+                if not row.empty:
+                    qty = int(float(row['ovrs_cblc_qty'].iloc[0]))
+                    avg = float(row['pchs_avg_pric'].iloc[0])
+        except Exception as e:
+            logger.error(f"Balance(Holdings) Error: {e}")
             
-        Returns:
-            Tuple of (quantity, avg_price) or (0, 0.0) if no position
-        """
-        df1, df2 = api.inquire_balance(
-            cano=self.trenv.my_acct,
-            acnt_prdt_cd=self.trenv.my_prod,
-            ovrs_excg_cd=self.exchange,
-            tr_crcy_cd=self.currency,
-            env_dv=self.env_mode
-        )
-        
-        if not df2.empty:
-            target = df2[df2['ovrs_pdno'] == symbol]
-            if not target.empty:
-                quantity = self._safe_int(target['ovrs_cblc_qty'].iloc[0])
-                avg_price = self._safe_float(target['pchs_avg_pric'].iloc[0])
-                return quantity, avg_price
-        
-        return 0, 0.0
+        return cash, qty, avg
 
-    def buy(self, amount, split_count=None, reason=None):
-        """Execute buy order with detailed notifications
+    def buy(self, amount, symbol=None, reason=None, **kwargs):
+        target = symbol or self.symbol
+        price = self.get_price(target)
         
-        Args:
-            amount: Dollar amount to buy
-            split_count: Split count for strategy (e.g., 40 or 80)
-            reason: Reason for buying (e.g., 'Initial Entry', 'Below Average')
-        """
-        current_price = self.get_price()
-        if not current_price:
-            error_msg = "❌ Cannot buy: Failed to get current price"
-            logger.error(error_msg)
-            self.notifier.send(error_msg)
-            return
-
-        qty = int(amount // current_price)
+        if price <= 0:
+            self.notifier.send(f"❌ Buy Failed: Invalid Price for {target}")
+            return False
+            
+        qty = int(amount // price)
         if qty <= 0:
-            logger.info(f"Buy amount ${amount:.2f} is too small for price ${current_price}")
-            return
-
-        # Get current position before buy
-        _, old_qty, old_avg = self.get_balance()
-        
-        logger.info(f"🟢 Executing BUY: {qty} shares of {self.symbol} @ ${current_price:.2f}")
-        
-        # Send pre-trade notification
-        pre_msg = (
-            f"🟢 **BUY ORDER SUBMITTED**\n"
-            f"━━━━━━━━━━━━━━━━━━━━\n"
-            f"Symbol:      `{self.symbol}`\n"
-            f"Quantity:    `{qty} shares`\n"
-            f"Price:       `${current_price:.2f}`\n"
-            f"Amount:      `${amount:.2f}`\n"
-        )
-        if split_count:
-            pre_msg += f"Split:       `1/{split_count}`\n"
-        if reason:
-            pre_msg += f"Reason:      `{reason}`\n"
-        pre_msg += f"━━━━━━━━━━━━━━━━━━━━"
-        
-        self.notifier.send(pre_msg)
-        
-        # Execute order
-        res = api.order(
-            order_dv="buy",
-            cano=self.trenv.my_acct,
-            acnt_prdt_cd=self.trenv.my_prod,
-            ovrs_excg_cd=self.exchange,
-            pdno=self.symbol,
-            ord_qty=str(qty),
-            ovrs_ord_unpr="0", # Market
-            ord_dvsn="00",
-            env_dv=self.env_mode
-        )
-        
-        # Wait a moment for order to settle
-        time.sleep(2)
-        
-        if not res.empty:
-            # Get updated position
-            _, new_qty, new_avg = self.get_balance()
+            logger.info(f"Buy skipped: Insufficient funds (${amount} vs ${price})")
+            return False
             
-            # Send success notification with position update
-            success_msg = (
-                f"✅ **BUY ORDER FILLED**\n"
-                f"━━━━━━━━━━━━━━━━━━━━\n"
-                f"Executed:    `{qty} shares @ ${current_price:.2f}`\n"
-                f"Total Cost:  `${qty * current_price:.2f}`\n"
-                f"━━━━━━━━━━━━━━━━━━━━\n"
-                f"**Position Update:**\n"
-                f"Before:      `{old_qty} shares @ ${old_avg:.2f}`\n"
-                f"After:       `{new_qty} shares @ ${new_avg:.2f}`\n"
-                f"━━━━━━━━━━━━━━━━━━━━"
-            )
-            logger.info(f"✅ BUY ORDER FILLED: {qty} shares")
-            self.notifier.send(success_msg)
-        else:
-            error_msg = f"❌ **BUY ORDER FAILED** for {self.symbol}"
-            logger.error(error_msg)
-            self.notifier.send(error_msg)
-
-    def sell_all(self, quantity, reason=None):
-        """Execute sell all order with detailed notifications
+        logger.info(f"Buying {target}: {qty} @ ${price}")
+        self.notifier.send(f"🛒 **BUYING** `{target}`\nQty: {qty}\nPrice: ${price}\nAmt: ${amount:.2f}")
         
-        Args:
-            quantity: Number of shares to sell
-            reason: Reason for selling (e.g., 'Profit Target 10%')
-        """
-        current_price = self.get_price()
-        if not current_price:
-            error_msg = "❌ Cannot sell: Failed to get current price"
-            logger.error(error_msg)
-            self.notifier.send(error_msg)
-            return
-        
-        # Get current position
-        _, _, avg_price = self.get_balance()
-        
-        # Calculate P&L
-        total_value = quantity * current_price
-        total_cost = quantity * avg_price if avg_price > 0 else 0
-        pnl = total_value - total_cost
-        pnl_pct = (pnl / total_cost * 100) if total_cost > 0 else 0
-        
-        logger.info(f"🔴 Executing SELL: {quantity} shares of {self.symbol} @ ${current_price:.2f}")
-        
-        # Send pre-trade notification
-        pre_msg = (
-            f"🔴 **SELL ORDER SUBMITTED**\n"
-            f"━━━━━━━━━━━━━━━━━━━━\n"
-            f"Symbol:      `{self.symbol}`\n"
-            f"Quantity:    `{quantity} shares (ALL)`\n"
-            f"Avg Price:   `${avg_price:.2f}`\n"
-            f"Sell Price:  `${current_price:.2f}`\n"
-        )
-        if reason:
-            pre_msg += f"Reason:      `{reason}`\n"
-        pre_msg += (
-            f"━━━━━━━━━━━━━━━━━━━━\n"
-            f"Expected P&L: `${pnl:+,.2f} ({pnl_pct:+.2f}%)`\n"
-            f"━━━━━━━━━━━━━━━━━━━━"
-        )
-        
-        self.notifier.send(pre_msg)
-        
-        # Execute order
         res = api.order(
-            order_dv="sell",
-            cano=self.trenv.my_acct,
-            acnt_prdt_cd=self.trenv.my_prod,
-            ovrs_excg_cd=self.exchange,
-            pdno=self.symbol,
-            ord_qty=str(quantity),
-            ovrs_ord_unpr="0", # Market
-            ord_dvsn="00",
-            env_dv=self.env_mode
+            "buy",
+            self.trenv.my_acct,
+            self.trenv.my_prod,
+            self.exchange,
+            target,
+            qty,
+            f"{price:.2f}", # Limit Price
+            "00" # Limit
         )
         
-        # Wait a moment for order to settle
-        time.sleep(2)
-        
-        if not res.empty:
-            # Send success notification
-            success_msg = (
-                f"✅ **SELL ORDER FILLED**\n"
-                f"━━━━━━━━━━━━━━━━━━━━\n"
-                f"Sold:        `{quantity} shares @ ${current_price:.2f}`\n"
-                f"Total Value: `${total_value:,.2f}`\n"
-                f"━━━━━━━━━━━━━━━━━━━━\n"
-                f"**Realized P&L:**\n"
-                f"Profit:      `${pnl:+,.2f} ({pnl_pct:+.2f}%)`\n"
-                f"━━━━━━━━━━━━━━━━━━━━\n"
-                f"🔄 Position closed - Strategy reset\n"
-                f"━━━━━━━━━━━━━━━━━━━━"
-            )
-            logger.info(f"✅ SELL ORDER FILLED: {quantity} shares")
-            self.notifier.send(success_msg)
+        if res is not None and not res.empty:
+            self.notifier.send(f"✅ Order Sent: {target}")
+            return True
         else:
-            error_msg = f"❌ **SELL ORDER FAILED** for {self.symbol}"
-            logger.error(error_msg)
-            self.notifier.send(error_msg)
+            self.notifier.send(f"❌ Order Rejected: {target}")
+            return False
+
+    def get_all_holdings(self):
+        """Simple list of dicts"""
+        out = []
+        try:
+            df1, _ = api.inquire_balance(
+                self.trenv.my_acct, 
+                self.trenv.my_prod, 
+                self.exchange, 
+                self.currency
+            )
+            if df1 is not None and not df1.empty:
+                for _, r in df1.iterrows():
+                    out.append({
+                        'symbol': r['ovrs_pdno'],
+                        'qty': int(float(r['ovrs_cblc_qty'])),
+                        'avg_price': float(r['pchs_avg_pric']),
+                        'current_price': float(r.get('now_pric2', 0))
+                    })
+        except:
+            pass
+        return out

@@ -1,0 +1,25 @@
+======================================================================
+🔍 잔고 및 주문가능금액 API 테스트
+======================================================================
+✅ 계좌: 43430971
+
+[1] 주문가능금액 조회 (inquire_psamount)
+  컬럼: ['tr_crcy_cd', 'ord_psbl_frcr_amt', 'sll_ruse_psbl_amt', 'ovrs_ord_psbl_amt', 'max_ord_psbl_qty', 'echm_af_ord_psbl_amt', 'echm_af_ord_psbl_qty', 'ord_psbl_qty', 'exrt', 'frcr_ord_psbl_amt1', 'ovrs_max_ord_psbl_qty']
+    tr_crcy_cd: USD
+    ord_psbl_frcr_amt: 3367.36
+    sll_ruse_psbl_amt: 0.00
+    ovrs_ord_psbl_amt: 3348.94
+    max_ord_psbl_qty: 66
+    echm_af_ord_psbl_amt: 0.00
+    echm_af_ord_psbl_qty: 0
+    ord_psbl_qty: 66
+    exrt: 1478.9000000000
+    frcr_ord_psbl_amt1: 19273.133620
+    ovrs_max_ord_psbl_qty: 385
+
+[2] 보유종목 조회 (inquire_balance)
+  df1(보유종목) rows: 1
+  df2(계좌요약) rows: 1
+    📍 F: 1주 @ $13.1300
+
+======================================================================

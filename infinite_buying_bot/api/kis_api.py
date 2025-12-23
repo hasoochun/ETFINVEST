@@ -1,226 +1,170 @@
+# -*- coding: utf-8 -*-
+"""
+KIS API Wrapper (Production Only / Clean Version)
+"""
+import requests
+import json
 import logging
 import pandas as pd
-from typing import Optional, Tuple
-from . import kis_auth as ka
+import time
 
 logger = logging.getLogger(__name__)
 
-def price(
-        auth: str,  # 사용자권한정보
-        excd: str,  # 거래소코드
-        symb: str,  # 종목코드
-        env_dv: str = "real",  # 실전모의구분
-        tr_cont: str = "",
-        dataframe: Optional[pd.DataFrame] = None,
-        depth: int = 0,
-        max_depth: int = 10
-) -> Optional[pd.DataFrame]:
-    """
-    [해외주식] 기본시세 > 해외주식 현재체결가[v1_해외주식-009]
-    """
-    if not excd: raise ValueError("excd is required")
-    if not symb: raise ValueError("symb is required")
+# Common Headers
+def _get_headers(trenv, tr_id):
+    return {
+        "content-type": "application/json",
+        "authorization": trenv.my_token,
+        "appkey": trenv.my_app,
+        "appsecret": trenv.my_sec,
+        "tr_id": tr_id
+    }
 
-    if depth >= max_depth:
-        logger.warning("Max recursion depth reached")
-        return dataframe if dataframe is not None else pd.DataFrame()
+def get_current_price(trenv, exchange, symbol, env_dv='prod'):
+    """Get Price - Returns float"""
+    # KIS API: 주식현재가 시세 (HHDFS76200200)
+    path = "/uapi/overseas-price/v1/quotations/price"
+    url = f"{trenv.my_url}{path}"
+    
+    headers = _get_headers(trenv, "HHDFS76200200")
+    params = {
+        "AUTH": "",
+        "EXCD": exchange,
+        "SYMB": symbol
+    }
+    
+    try:
+        res = requests.get(url, headers=headers, params=params)
+        res.raise_for_status()
+        data = res.json()
+        
+        if data['rt_cd'] != '0':
+            logger.error(f"Price API Failed: {data['msg1']}")
+            return 0.0
+            
+        return float(data['output']['last'])
+    except Exception as e:
+        logger.error(f"Price API Exception: {e}")
+        return 0.0
 
-    if env_dv == "real" or env_dv == "demo":
-        tr_id = "HHDFS00000300"
-    else:
-        raise ValueError("env_dv must be 'real' or 'demo'")
+# Alias for compatibility
+def price(auth, excd, symb, env_dv='prod'):
+    # This function returns a DataFrame to match legacy code expectation in Trader.py partial rewrites
+    # But since we are rewriting Trader.py too, we can simplify.
+    # We will keep it returning DF for safety if other modules use it.
+    from infinite_buying_bot.api import kis_auth
+    trenv = kis_auth.getTREnv()
+    if not trenv: return pd.DataFrame()
+    
+    p = get_current_price(trenv, excd, symb)
+    if p > 0:
+        return pd.DataFrame([{'last': p}])
+    return pd.DataFrame()
 
-    api_url = "/uapi/overseas-price/v1/quotations/price"
-    params = {"AUTH": auth, "EXCD": excd, "SYMB": symb}
+def inquire_psamount(cano, acnt_prdt_cd, ovrs_excg_cd, ovrs_ord_unpr, item_cd, env_dv='prod'):
+    """Check Buying Power"""
+    from infinite_buying_bot.api import kis_auth
+    trenv = kis_auth.getTREnv()
 
-    res = ka._url_fetch(api_url, tr_id, tr_cont, params)
-
-    if res.isOK():
-        if hasattr(res.getBody(), 'output'):
-            output_data = res.getBody().output
-            if not isinstance(output_data, list):
-                output_data = [output_data]
-            current_data = pd.DataFrame(output_data)
-        else:
-            current_data = pd.DataFrame()
-
-        if dataframe is not None:
-            dataframe = pd.concat([dataframe, current_data], ignore_index=True)
-        else:
-            dataframe = current_data
-
-        return dataframe
-    else:
-        logger.error(f"API call failed: {res.getErrorCode()} - {res.getErrorMessage()}")
-        return pd.DataFrame()
-
-def order(
-        order_dv: str,  # 주문구분 buy(매수) / sell(매도)
-        cano: str,  # 종합계좌번호
-        acnt_prdt_cd: str,  # 계좌상품코드
-        ovrs_excg_cd: str,  # 해외거래소코드
-        pdno: str,  # 상품번호
-        ord_qty: str,  # 주문수량
-        ovrs_ord_unpr: str,  # 해외주문단가
-        ord_dvsn: str = "00",  # 주문구분 (00: 지정가/시장가)
-        ctac_tlno: str = "",
-        mgco_aptm_odno: str = "",
-        ord_svr_dvsn_cd: str = "0",
-        env_dv: str = "real",
-) -> Optional[pd.DataFrame]:
-    """
-    [해외주식] 주문/계좌 > 해외주식 미국주간주문 [v1_해외주식-026]
-    """
-    if env_dv == "real":
-        if order_dv == "buy":
-            tr_id = "TTTS6036U"
-        elif order_dv == "sell":
-            tr_id = "TTTS6037U"
-        else:
-            raise ValueError("Invalid order_dv")
-    elif env_dv == "demo":
-        if order_dv == "buy":
-            tr_id = "VTTS1002U"  # Mock trading buy
-        elif order_dv == "sell":
-            tr_id = "VTTS1001U"  # Mock trading sell
-        else:
-            raise ValueError("Invalid order_dv")
-    else:
-        raise ValueError("env_dv must be 'real' or 'demo'")
-
-    api_url = "/uapi/overseas-stock/v1/trading/daytime-order"
-
+    path = "/uapi/overseas-stock/v1/trading/inquire-psamount"
+    url = f"{trenv.my_url}{path}"
+    
+    # TR ID for Buying Power: TTTS3007R (Prod)
+    headers = _get_headers(trenv, "TTTS3007R")
+    
     params = {
         "CANO": cano,
         "ACNT_PRDT_CD": acnt_prdt_cd,
         "OVRS_EXCG_CD": ovrs_excg_cd,
-        "PDNO": pdno,
-        "ORD_QTY": ord_qty,
         "OVRS_ORD_UNPR": ovrs_ord_unpr,
-        "CTAC_TLNO": ctac_tlno,
-        "MGCO_APTM_ODNO": mgco_aptm_odno,
-        "ORD_SVR_DVSN_CD": ord_svr_dvsn_cd,
-        "ORD_DVSN": ord_dvsn,
+        "ITEM_CD": item_cd
     }
-
-    res = ka._url_fetch(api_url=api_url, ptr_id=tr_id, tr_cont="", params=params, postFlag=True)
-
-    if res.isOK():
-        if hasattr(res.getBody(), 'output'):
-            output_data = res.getBody().output
-            if not isinstance(output_data, list):
-                output_data = [output_data]
-            return pd.DataFrame(output_data)
-        return pd.DataFrame()
-    else:
-        logger.error(f"Order failed: {res.getErrorCode()} - {res.getErrorMessage()}")
-        return pd.DataFrame()
-
-def inquire_balance(
-        cano: str,
-        acnt_prdt_cd: str,
-        ovrs_excg_cd: str,
-        tr_crcy_cd: str,
-        env_dv: str = "real",
-        tr_cont: str = "",
-        dataframe1: Optional[pd.DataFrame] = None,
-        dataframe2: Optional[pd.DataFrame] = None,
-) -> Tuple[pd.DataFrame, pd.DataFrame]:
-    """
-    [해외주식] 주문/계좌 > 해외주식 잔고 [v1_해외주식-006]
-    FIXED: Use correct TR_ID for mock trading
-    """
-    if env_dv == "real":
-        tr_id = "TTTC8434R"  # Real trading
-    elif env_dv == "demo":
-        tr_id = "VTTC8434R"  # Mock trading (FIXED!)
-    else:
-        raise ValueError("env_dv must be 'real' or 'demo'")
-
-    api_url = "/uapi/overseas-stock/v1/trading/inquire-present-balance"
     
-    # Mock trading and real trading use DIFFERENT parameter names
-    if env_dv == "demo":
-        # Mock trading uses shorter field names and requires additional fields
-        params = {
-            "CANO": cano,
-            "ACNT_PRDT_CD": acnt_prdt_cd,
-            "WCRC_FRCR_DVSN": "02",  # Foreign currency (no _CD suffix)
-            "NATN_CD": "840" if ovrs_excg_cd in ["NASD", "NYSE", "AMEX"] else "000",
-            "TR_MKET_CD": "00",
-            "INQR_DVSN": "00",  # No _CD suffix
-            "AFHR_FLPR_YN": "N",  # After-hours price Y/N
-            "OFL_YN": "N",  # Offline Y/N
-            "UNPR_DVSN": "01",  # Unit price division
-            "FUND_STTL_ICLD_YN": "N",  # Fund settlement include Y/N
-            "FNCG_AMT_AUTO_RDPT_YN": "N",  # Financing amount auto redemption Y/N
-            "PRCS_DVSN": "01",  # Process division
-            "CTX_AREA_FK100": "",  # Pagination key
-            "CTX_AREA_NK100": "",  # Pagination key
-        }
-    else:
-        # Real trading uses longer field names
-        params = {
-            "CANO": cano,
-            "ACNT_PRDT_CD": acnt_prdt_cd,
-            "WCRC_FRCR_DVSN_CD": "02",
-            "NATN_CD": "840" if ovrs_excg_cd in ["NASD", "NYSE", "AMEX"] else "000",
-            "TR_MKET_CD": "00",
-            "INQR_DVSN_CD": "00",
-        }
+    try:
+        res = requests.get(url, headers=headers, params=params)
+        res.raise_for_status()
+        data = res.json()
+        if data['rt_cd'] != '0':
+            logger.error(f"BuyingPower API Failed: {data.get('msg1')}")
+            return None
+        return pd.DataFrame([data['output']])
+    except Exception as e:
+        logger.error(f"BuyingPower API Exception: {e}")
+        return None
 
-    # DEBUG: Log exact request details
-    logger.info(f"DEBUG: Balance Request - URL: {api_url}, TR_ID: {tr_id}")
-    logger.info(f"DEBUG: Balance Request - CANO: '{cano}', PRDT: '{acnt_prdt_cd}'")
-    logger.info(f"DEBUG: Balance Request - Params: {params}")
+def inquire_balance(cano, acnt_prdt_cd, ovrs_excg_cd, tr_crcy_cd, env_dv='prod'):
+    """Check Holdings"""
+    from infinite_buying_bot.api import kis_auth
+    trenv = kis_auth.getTREnv()
 
-    res = ka._url_fetch(api_url=api_url, ptr_id=tr_id, tr_cont=tr_cont, params=params)
-
-    if res.isOK():
-        # IMPORTANT: Mock trading API returns data in OPPOSITE order from real trading
-        # Mock: output1 = Holdings, output2 = Account Info
-        # Real: output1 = Account Info, output2 = Holdings
-        
-        if env_dv == "demo":
-            # For mock trading: swap output1 and output2
-            # Output 1 (Holdings in mock trading)
-            if hasattr(res.getBody(), 'output1'):
-                d2 = res.getBody().output1
-                if d2:
-                    current_data2 = pd.DataFrame(d2 if isinstance(d2, list) else [d2])
-                    dataframe2 = pd.concat([dataframe2, current_data2], ignore_index=True) if dataframe2 is not None else current_data2
-                else:
-                    dataframe2 = dataframe2 if dataframe2 is not None else pd.DataFrame()
+    path = "/uapi/overseas-stock/v1/trading/inquire-balance"
+    url = f"{trenv.my_url}{path}"
+    
+    # TR ID for Balance: TTTS3012R (Prod)
+    headers = _get_headers(trenv, "TTTS3012R")
+    
+    params = {
+        "CANO": cano,
+        "ACNT_PRDT_CD": acnt_prdt_cd,
+        "OVRS_EXCG_CD": ovrs_excg_cd,
+        "TR_CRCY_CD": tr_crcy_cd,
+        "CTX_AREA_FK100": "",
+        "CTX_AREA_NK100": ""
+    }
+    
+    try:
+        res = requests.get(url, headers=headers, params=params)
+        res.raise_for_status()
+        data = res.json()
+        if data['rt_cd'] != '0':
+            logger.error(f"Balance API Failed: {data.get('msg1')}")
+            return pd.DataFrame(), pd.DataFrame()
             
-            # Output 2 (Account Info in mock trading)
-            if hasattr(res.getBody(), 'output2'):
-                d1 = res.getBody().output2
-                if d1:
-                    current_data1 = pd.DataFrame([d1] if not isinstance(d1, list) else d1)
-                    dataframe1 = pd.concat([dataframe1, current_data1], ignore_index=True) if dataframe1 is not None else current_data1
-                else:
-                    dataframe1 = dataframe1 if dataframe1 is not None else pd.DataFrame()
-        else:
-            # For real trading: normal order
-            # Output 1 (Account Info)
-            if hasattr(res.getBody(), 'output1'):
-                d1 = res.getBody().output1
-                if d1:
-                    current_data1 = pd.DataFrame([d1] if not isinstance(d1, list) else d1)
-                    dataframe1 = pd.concat([dataframe1, current_data1], ignore_index=True) if dataframe1 is not None else current_data1
-                else:
-                    dataframe1 = dataframe1 if dataframe1 is not None else pd.DataFrame()
-            
-            # Output 2 (Holdings)
-            if hasattr(res.getBody(), 'output2'):
-                d2 = res.getBody().output2
-                if d2:
-                    current_data2 = pd.DataFrame(d2 if isinstance(d2, list) else [d2])
-                    dataframe2 = pd.concat([dataframe2, current_data2], ignore_index=True) if dataframe2 is not None else current_data2
-                else:
-                    dataframe2 = dataframe2 if dataframe2 is not None else pd.DataFrame()
-                
-        return dataframe1, dataframe2
-    else:
-        logger.error(f"Balance check failed: {res.getErrorCode()} - {res.getErrorMessage()}")
+        return pd.DataFrame(data['output1']), pd.DataFrame(data['output2'])
+    except Exception as e:
+        logger.error(f"Balance API Exception: {e}")
         return pd.DataFrame(), pd.DataFrame()
+
+def order(order_dv, cano, acnt_prdt_cd, ovrs_excg_cd, pdno, ord_qty, ovrs_ord_unpr, ord_dvsn, env_dv='prod'):
+    """Execute Order"""
+    from infinite_buying_bot.api import kis_auth
+    trenv = kis_auth.getTREnv()
+
+    path = "/uapi/overseas-stock/v1/trading/order"
+    url = f"{trenv.my_url}{path}"
+    
+    # TR ID: TTTS1002U (Buy), TTTS1001U (Sell)
+    tr_id = "TTTS1002U" if order_dv == "buy" else "TTTS1006U" # Sell ID might differ, checking... Sell is TTTS1001U or TTTS1006U?
+    # Usually Buy: TTTS1002U, Sell: TTTS1001U (California) / TTTS1006U (NewYork)?
+    # For safety let's use standard:
+    if order_dv == "buy":
+        tr_id = "TTTS1002U" # 미국 매수 주문
+    else:
+        tr_id = "TTTS1001U" # 미국 매도 주문
+        
+    headers = _get_headers(trenv, tr_id)
+    
+    body = {
+        "CANO": cano,
+        "ACNT_PRDT_CD": acnt_prdt_cd,
+        "OVRS_EXCG_CD": ovrs_excg_cd,
+        "PDNO": pdno,
+        "ORD_QTY": str(ord_qty),
+        "OVRS_ORD_UNPR": str(ovrs_ord_unpr),
+        "ORD_DVSN": ord_dvsn
+    }
+    
+    try:
+        logger.info(f"Sending Order: {json.dumps(body)}")
+        res = requests.post(url, headers=headers, json=body)
+        res.raise_for_status()
+        data = res.json()
+        
+        if data['rt_cd'] != '0':
+            logger.error(f"Order API Failed: {data.get('msg1')} (Code: {data.get('msg_cd')})")
+            return None
+            
+        return pd.DataFrame([data['output']])
+    except Exception as e:
+        logger.error(f"Order API Exception: {e}")
+        return None

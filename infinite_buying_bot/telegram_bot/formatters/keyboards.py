@@ -113,6 +113,9 @@ def get_dip_mode_keyboard() -> InlineKeyboardMarkup:
             InlineKeyboardButton("🏃 가속 모드", callback_data='set_dip_mode_accelerated')
         ],
         [
+            InlineKeyboardButton("⚡ 가속 테스트 모드", callback_data='set_dip_mode_accel_test')
+        ],
+        [
             InlineKeyboardButton("◀️ 뒤로", callback_data='back_to_status')
         ]
     ]

@@ -12,34 +12,36 @@ logger = logging.getLogger(__name__)
 class PortfolioManager:
     """Manages multi-asset portfolio allocation and tracking"""
     
-    def __init__(self, initial_capital: float = 100000000.0, aggressive_etf: str = 'TQQQ'):
+    def __init__(self, initial_capital: float = 0.0, aggressive_etf: str = 'TQQQ'):
         """
         Initialize portfolio manager
         
         Args:
             initial_capital: Initial capital in KRW (default: 1억)
-            aggressive_etf: ETF to use for 30% aggressive position (default: TQQQ)
+            aggressive_etf: ETF to use for aggressive position (default: TQQQ)
         """
         self.initial_capital = initial_capital
         self.aggressive_etf = aggressive_etf
         
-        # Target allocation (percentages) - DYNAMIC
+        # Target allocation (percentages) - 4종목 구성
         self.target_allocation = {
-            aggressive_etf: 0.30,  # 30% - Short-term trading
-            'SHV': 0.50,           # 50% - Cash buffer
-            'SCHD': 0.20           # 20% - Long-term accumulation (grows over time)
+            'TQQQ': 0.10,   # 10% - Aggressive (3x leverage)
+            'MAGS': 0.20,   # 20% - Magnificent 7
+            'SHV': 0.50,    # 50% - Cash buffer
+            'JEPI': 0.20    # 20% - Income generation
         }
         
         # Current positions (will be updated from Trader) - DYNAMIC
         self.positions = {
-            aggressive_etf: {'quantity': 0, 'avg_price': 0.0, 'current_price': 0.0},
+            'TQQQ': {'quantity': 0, 'avg_price': 0.0, 'current_price': 0.0},
+            'MAGS': {'quantity': 0, 'avg_price': 0.0, 'current_price': 0.0},
             'SHV': {'quantity': 0, 'avg_price': 0.0, 'current_price': 0.0},
-            'SCHD': {'quantity': 0, 'avg_price': 0.0, 'current_price': 0.0}
+            'JEPI': {'quantity': 0, 'avg_price': 0.0, 'current_price': 0.0}
         }
         
         self.cash = initial_capital
         
-        logger.info(f"Portfolio Manager initialized with {initial_capital:,.0f} KRW, aggressive ETF: {aggressive_etf}")
+        logger.info(f"Portfolio Manager initialized with {initial_capital:,.0f} KRW, 4-asset strategy")
     
     def update_positions(self, positions: Dict[str, Dict]):
         """
@@ -48,7 +50,7 @@ class PortfolioManager:
         Args:
             positions: Dict of {symbol: {quantity, avg_price, current_price}}
         """
-        for symbol in ['TQQQ', 'SHV', 'SCHD']:
+        for symbol in ['TQQQ', 'MAGS', 'SHV', 'JEPI']:
             if symbol in positions:
                 self.positions[symbol] = positions[symbol]
         

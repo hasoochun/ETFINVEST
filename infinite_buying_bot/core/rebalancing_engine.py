@@ -14,19 +14,32 @@ logger = logging.getLogger(__name__)
 class RebalancingEngine:
     """Implements infinite buying strategy with dynamic rebalancing"""
     
-    def __init__(self, portfolio_manager, bot_controller=None):
+    def __init__(self, portfolio_manager, bot_controller=None, config=None):
         """
         Initialize rebalancing engine
         
         Args:
             portfolio_manager: PortfolioManager instance
             bot_controller: BotController instance (for dip buy mode)
+            config: Configuration dictionary (optional)
         """
         self.portfolio = portfolio_manager
         self.bot_controller = bot_controller
+        self.config = config or {}
         
-        # TQQQ strategy parameters
-        self.tqqq_target_profit = 0.10  # +10% profit target
+        # Load accelerated test settings if available
+        accel_config = self.config.get('accelerated_test', {})
+        self.accel_test_enabled = accel_config.get('enabled', False)
+        self.accel_interval_minutes = accel_config.get('interval_minutes', 5)
+        self.accel_fixed_quantity = accel_config.get('fixed_quantity', 1)
+        self.accel_profit_target = accel_config.get('profit_target_pct', 3.0) / 100.0
+        
+        # TQQQ strategy parameters (use accelerated if enabled)
+        if self.accel_test_enabled:
+            self.tqqq_target_profit = self.accel_profit_target
+            logger.info(f"⚡ Accelerated Test Mode: {self.accel_interval_minutes}min, {self.accel_fixed_quantity} share, {self.accel_profit_target*100}% target")
+        else:
+            self.tqqq_target_profit = 0.10  # +10% profit target
         
         # 40/80 split strategy (using SHV as buffer)
         # - Price < Avg: SHV / 40 (aggressive)
@@ -79,7 +92,7 @@ class RebalancingEngine:
         profit_pct = (current_price - avg_price) / avg_price
         
         if profit_pct >= self.tqqq_target_profit:
-            # Sell all TQQQ, buy SCHD with profits
+            # Sell all TQQQ, buy JEPI with profits
             profit_amount = tqqq_pos['quantity'] * (current_price - avg_price)
             
             # Floor profit amount to integer
@@ -91,7 +104,7 @@ class RebalancingEngine:
                 'action': 'profit_taking',
                 'sell_symbol': 'TQQQ',
                 'sell_quantity': tqqq_pos['quantity'],
-                'buy_symbol': 'SCHD',
+                'buy_symbol': 'JEPI',
                 'profit_amount': profit_amount,
                 'profit_pct': profit_pct * 100,
                 'reason': f'Profit target +{self.tqqq_target_profit*100:.0f}% reached'
@@ -134,22 +147,23 @@ class RebalancingEngine:
                 logger.info(f"✅ Daily mode: In buy window ({now_et.strftime('%H:%M')} ET)")
             
             elif mode == 'accelerated':
-                # Check if 10 minutes elapsed
+                # Use configurable interval (default 5 min for accelerated test)
+                interval = self.accel_interval_minutes if self.accel_test_enabled else 10
                 if last_buy_time:
                     elapsed_minutes = (now - last_buy_time).total_seconds() / 60
-                    if elapsed_minutes < 10:
-                        # logger.debug(f"Accelerated mode: Only {elapsed_minutes:.1f} min elapsed (need 10)")
+                    if elapsed_minutes < interval:
+                        # logger.debug(f"Accelerated mode: Only {elapsed_minutes:.1f} min elapsed (need {interval})")
                         return None
                 
-                logger.info("✅ Accelerated mode: 10 minutes elapsed or first buy")
+                logger.info(f"✅ Accelerated mode: {interval} minutes elapsed or first buy")
         else:
             logger.warning("BotController not set, skipping time-based check")
 
         tqqq_pos = self.portfolio.positions['TQQQ']
         shv_pos = self.portfolio.positions['SHV']
         
-        # Need SHV to buy TQQQ
-        if shv_pos['quantity'] == 0:
+        # Need SHV to buy TQQQ (unless in accel_test mode - uses cash directly)
+        if shv_pos['quantity'] == 0 and not self.accel_test_enabled:
             return None
         
         current_price = tqqq_pos['current_price']
@@ -176,21 +190,19 @@ class RebalancingEngine:
             split_count = 40
             reason = "No average price yet"
         
-        # Calculate buy amount from SHV
+        # Calculate buy amount from SHV (all modes use same strategy)
         buy_amount = shv_value / split_count
-        
         # Floor to avoid decimal issues in trading
         buy_amount = int(buy_amount)
-        
         # Minimum buy threshold ($100)
         if buy_amount < 100:
             return None
         
-        logger.info(f"📉 TQQQ buy signal: {reason}, buying ${buy_amount:,.0f} (1/{split_count} of SHV)")
+        logger.info(f"📉 TQQQ buy signal: {reason}, buying ${buy_amount:,.0f}")
         
         return {
             'action': 'dip_buying',
-            'sell_symbol': 'SHV',
+            'sell_symbol': 'SHV' if shv_pos['quantity'] > 0 else None,
             'sell_amount': buy_amount,
             'buy_symbol': 'TQQQ',
             'split_count': split_count,
@@ -201,7 +213,7 @@ class RebalancingEngine:
     
     def check_shv_interest_reinvest(self, monthly_interest: float) -> Optional[Dict]:
         """
-        Check if SHV interest should be reinvested into SCHD
+        Check if SHV interest should be reinvested into JEPI
         
         Args:
             monthly_interest: Monthly interest earned from SHV
@@ -213,12 +225,12 @@ class RebalancingEngine:
         monthly_interest = int(monthly_interest)
         
         if monthly_interest > 100:  # Minimum $100
-            logger.info(f"💰 SHV interest reinvest: {monthly_interest:,.0f} KRW → SCHD")
+            logger.info(f"💰 SHV interest reinvest: {monthly_interest:,.0f} KRW → JEPI")
             
             return {
                 'action': 'interest_reinvest',
                 'source': 'SHV_interest',
-                'buy_symbol': 'SCHD',
+                'buy_symbol': 'JEPI',
                 'amount': monthly_interest,
                 'reason': 'SHV interest reinvestment'
             }
@@ -245,14 +257,19 @@ class RebalancingEngine:
         if dip_action:
             actions.append(dip_action)
         
-        # 3. Check periodic rebalancing (if no other actions)
-        if not actions and self.portfolio.needs_rebalancing(threshold=0.10):
-            rebalance_trades = self.portfolio.calculate_rebalancing_trades()
-            for trade in rebalance_trades:
-                actions.append({
-                    'action': 'rebalance',
-                    **trade
-                })
+        # 3. Check periodic rebalancing (if no other actions and not in accel_test)
+        if not actions and not self.accel_test_enabled:
+            if self.portfolio.needs_rebalancing(threshold=0.10):
+                rebalance_trades = self.portfolio.calculate_rebalancing_trades()
+                for trade in rebalance_trades:
+                    actions.append({
+                        'action': 'rebalance',
+                        'trade_action': trade['action'],  # 'buy' or 'sell'
+                        'symbol': trade['symbol'],
+                        'amount_krw': trade['amount_krw'],
+                        'reason': trade['reason']
+                    })
+
         
         return actions
     
@@ -294,11 +311,15 @@ class RebalancingEngine:
                 
             elif action_type == 'rebalance':
                 # Execute rebalancing trade
-                if action['action'] == 'buy':
+                import time
+                trade_action = action.get('trade_action', 'buy')
+                if trade_action == 'buy':
                     trader.buy(action['symbol'], action['amount_krw'])
                 else:
                     trader.sell(action['symbol'], action['amount_krw'])
-                logger.info(f"✅ Rebalance executed: {action['symbol']}")
+                logger.info(f"✅ Rebalance executed: {trade_action} {action['symbol']}")
+                # Rate limit: wait 1 second between orders
+                time.sleep(1)
             
             return True
             

@@ -103,7 +103,7 @@ def get_initial_capital() -> float:
     cursor.execute("SELECT value FROM config WHERE key = 'initial_capital'")
     result = cursor.fetchone()
     conn.close()
-    return float(result[0]) if result else 100000000.0  # Default 1억
+    return float(result[0]) if result else 0.0  # [FIX] Default 0 (Was 100M)
 
 def log_trade(trade_type: str, symbol: str, quantity: int, price: float, 
               pnl: float = None, pnl_pct: float = None, trade_count: int = None,

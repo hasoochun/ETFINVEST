@@ -1,11 +1,11 @@
 #홈페이지에서 API서비스 신청시 받은 Appkey, Appsecret 값 설정
 #실전투자
 my_app: "PSJgF4Y36sCVBmQF4z671Jd5Vf6tGlmB53MY"
-my_sec: "EeU80V2/UUBhNDErGUpcZYX2LkAJX3Bw9yh2uZwd3OPgTHu57EIopa64QY2H8haRVZ2Hf/M9CSPoKR"
+my_sec: "EeUB0V2/UUBhNDErGUpcZYX2LKAJX3Bw9yh2uZwd3OPgTHu57EIopa64QY2H8haRVZ2Hf/M9CSPoKRtSXWWOVOVY+J8WngQP262Q1NunX2aTH/Ai0rG1PY/VrLVKILF8ZWNIrKASkzfiNDQ6lJkTy+4AdLp2bReS3br/A9ZTUya7E11F4mI="
 
-#모의투자
-paper_app: "PSJgF4Y36sCVBmQF4z671Jd5Vf6tGlmB53MY"
-paper_sec: "EeU80V2/UUBhNDErGUpcZYX2LkAJX3Bw9yh2uZwd3OPgTHu57EIopa64QY2H8haRVZ2Hf/M9CSPoKR"
+#모의투자 (사용되지 않음)
+paper_app: "PSiv1jUDu5KilmT0Yfr4mMqhn7c2T5TjI5YP"
+paper_sec: "/dQW7/KO+W8ncA6TYB1fzRA1iNaYNyONtP9G4PPd+agriPP26hAR5o5SMfdS04/qSmtLQn7hUPivMkR5Vvj9yXYZBfSrmD+1N5M7VE49QKGy5uQEbbDITM3/KvsGs8Eoi5OLmerceKQ0hv7+Pc2M1uflw5TgGKpvJ5zfEWn7gwoXU3IheUs="
 
 # HTS ID
 my_htsid: "사용자 HTS ID"
@@ -18,10 +18,6 @@ my_paper_future: "모의투자 선물옵션계좌 8자리"
 
 #계좌번호 뒤 2자리
 my_prod: "01" # 종합계좌
-# my_prod: "03" # 국내선물옵션계좌
-# my_prod: "08" # 해외선물옵션 계좌
-# my_prod: "22" # 개인연금
-# my_prod: "29" # 퇴직연금
 
 #domain infos
 prod: "https://openapi.koreainvestment.com:9443" # 서비스
@@ -29,7 +25,12 @@ ops: "ws://ops.koreainvestment.com:21000" # 웹소켓
 vps: "https://openapivts.koreainvestment.com:29443" # 모의투자 서비스
 vops: "ws://ops.koreainvestment.com:31000" # 모의투자 웹소켓
 
-my_token: ""
+# 텔레그램 설정
+telegram_token: "8073866620:AAGxA74ht4iG2vOC8DtJhlyN7jyJMv-76ho"
+telegram_chat_id: "7732813852"
 
-# User-Agent; Chrome > F12 개발자 모드 > Console > navigator.userAgent > 자신의 userAgent 확인가능
-my_agent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36"
+# User-Agent
+my_agent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/109.0.0.0 Safari/537.36"
+
+# 거래 모드: real(실전투자) 또는 demo(모의투자)
+trading_mode: "real"
