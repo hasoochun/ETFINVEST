@@ -1,0 +1,16 @@
+{
+  "command": "stop",
+  "strategy_mode": "neutral",
+  "target_portfolio": {
+    "TQQQ": 0.1,
+    "SHV": 0.5,
+    "MAGS": 0.2,
+    "JEPI": 0.2,
+    "SCHD": 0
+  },
+  "last_updated": "2025-12-25T02:37:12.528288",
+  "dip_buy_mode": "accelerated",
+  "trading_mode": "st-exchange",
+  "gradual_interval": 5,
+  "daily_time": "04:00"
+}

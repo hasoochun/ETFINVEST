@@ -42,7 +42,11 @@ def get_current_price(trenv, exchange, symbol, env_dv='prod'):
             logger.error(f"Price API Failed: {data['msg1']}")
             return 0.0
             
-        return float(data['output']['last'])
+        price_str = data['output'].get('last', '')
+        if not price_str:
+            logger.warning(f"Price API returned empty value for {symbol}")
+            return 0.0
+        return float(price_str)
     except Exception as e:
         logger.error(f"Price API Exception: {e}")
         return 0.0
@@ -100,16 +104,16 @@ def inquire_balance(cano, acnt_prdt_cd, ovrs_excg_cd, tr_crcy_cd, env_dv='prod')
     path = "/uapi/overseas-stock/v1/trading/inquire-balance"
     url = f"{trenv.my_url}{path}"
     
-    # TR ID for Balance: TTTS3012R (Prod)
-    headers = _get_headers(trenv, "TTTS3012R")
+    # TR ID for Balance: TTTT3012R (REAL), TTTS3012R (Mock)
+    headers = _get_headers(trenv, "TTTT3012R")
     
     params = {
         "CANO": cano,
         "ACNT_PRDT_CD": acnt_prdt_cd,
         "OVRS_EXCG_CD": ovrs_excg_cd,
         "TR_CRCY_CD": tr_crcy_cd,
-        "CTX_AREA_FK100": "",
-        "CTX_AREA_NK100": ""
+        "CTX_AREA_FK200": "",
+        "CTX_AREA_NK200": ""
     }
     
     try:
@@ -120,7 +124,7 @@ def inquire_balance(cano, acnt_prdt_cd, ovrs_excg_cd, tr_crcy_cd, env_dv='prod')
             logger.error(f"Balance API Failed: {data.get('msg1')}")
             return pd.DataFrame(), pd.DataFrame()
             
-        return pd.DataFrame(data['output1']), pd.DataFrame(data['output2'])
+        return pd.DataFrame(data['output1']), pd.DataFrame([data['output2']])
     except Exception as e:
         logger.error(f"Balance API Exception: {e}")
         return pd.DataFrame(), pd.DataFrame()
@@ -133,14 +137,13 @@ def order(order_dv, cano, acnt_prdt_cd, ovrs_excg_cd, pdno, ord_qty, ovrs_ord_un
     path = "/uapi/overseas-stock/v1/trading/order"
     url = f"{trenv.my_url}{path}"
     
-    # TR ID: TTTS1002U (Buy), TTTS1001U (Sell)
-    tr_id = "TTTS1002U" if order_dv == "buy" else "TTTS1006U" # Sell ID might differ, checking... Sell is TTTS1001U or TTTS1006U?
-    # Usually Buy: TTTS1002U, Sell: TTTS1001U (California) / TTTS1006U (NewYork)?
-    # For safety let's use standard:
+    # IMPORTANT: TTTT for REAL trading, TTTS for MOCK trading
+    # Real Trading: TTTT1002U (Buy), TTTT1006U (Sell)
+    # Mock Trading: TTTS1002U (Buy), TTTS1006U (Sell)
     if order_dv == "buy":
-        tr_id = "TTTS1002U" # 미국 매수 주문
+        tr_id = "TTTT1002U"  # REAL trading buy
     else:
-        tr_id = "TTTS1001U" # 미국 매도 주문
+        tr_id = "TTTT1006U"  # REAL trading sell
         
     headers = _get_headers(trenv, tr_id)
     
@@ -151,7 +154,8 @@ def order(order_dv, cano, acnt_prdt_cd, ovrs_excg_cd, pdno, ord_qty, ovrs_ord_un
         "PDNO": pdno,
         "ORD_QTY": str(ord_qty),
         "OVRS_ORD_UNPR": str(ovrs_ord_unpr),
-        "ORD_DVSN": ord_dvsn
+        "ORD_DVSN": ord_dvsn,
+        "ORD_SVR_DVSN_CD": "0"  # Required for real trading
     }
     
     try:
@@ -159,6 +163,9 @@ def order(order_dv, cano, acnt_prdt_cd, ovrs_excg_cd, pdno, ord_qty, ovrs_ord_un
         res = requests.post(url, headers=headers, json=body)
         res.raise_for_status()
         data = res.json()
+        
+        # Log full response for debugging
+        logger.info(f"Order Response: rt_cd={data.get('rt_cd')}, msg_cd={data.get('msg_cd')}, msg1={data.get('msg1')}")
         
         if data['rt_cd'] != '0':
             logger.error(f"Order API Failed: {data.get('msg1')} (Code: {data.get('msg_cd')})")

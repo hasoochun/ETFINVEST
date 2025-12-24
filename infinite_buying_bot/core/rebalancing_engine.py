@@ -173,21 +173,37 @@ class RebalancingEngine:
         shv_value = shv_pos['quantity'] * shv_pos['current_price']
         
         # Determine split count based on price vs average
+        # Determine split count based on price vs average AND Strategy Mode
+        # Default (Neutral): 40 (Below Avg) / 80 (Above Avg)
+        base_aggressive = 40
+        base_conservative = 80
+        
+        if self.bot_controller:
+            mode = self.bot_controller.strategy_mode
+            if mode == 'aggressive':
+                base_aggressive = 20
+                base_conservative = 40
+                logger.debug("🔥 Aggressive Mode: Split counts reduced to 20/40")
+            elif mode == 'defensive':
+                base_aggressive = 60
+                base_conservative = 100
+                logger.debug("🛡️ Defensive Mode: Split counts increased to 60/100")
+
         if tqqq_pos['quantity'] == 0:
-            # Initial entry: aggressive 40 split
-            split_count = 40
+            # Initial entry: aggressive base
+            split_count = base_aggressive
             reason = "Initial TQQQ entry"
         elif avg_price > 0 and current_price < avg_price:
-            # Below average: aggressive 40 split
-            split_count = 40
+            # Below average: aggressive base
+            split_count = base_aggressive
             reason = f"Price below avg (${current_price:.2f} < ${avg_price:.2f})"
         elif avg_price > 0 and current_price >= avg_price:
-            # Above average: conservative 80 split
-            split_count = 80
+            # Above average: conservative base
+            split_count = base_conservative
             reason = f"Price above avg (${current_price:.2f} ≥ ${avg_price:.2f})"
         else:
-            # No position yet, use aggressive
-            split_count = 40
+            # No position yet
+            split_count = base_aggressive
             reason = "No average price yet"
         
         # Calculate buy amount from SHV (all modes use same strategy)

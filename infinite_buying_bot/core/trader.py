@@ -14,7 +14,7 @@ class Trader:
         self.config = config
         self.notifier = notifier
         
-        logger.info("🟢 TRADER (REAL) STARTING...")
+        logger.info("[REAL] TRADER STARTING...")
         
         # Authenticate
         try:
@@ -26,14 +26,21 @@ class Trader:
         # Config
         self.symbol = "TQQQ" # Default
         self.symbols = ["TQQQ", "MAGS", "SHV", "JEPI"]
-        self.exchange = "NASD"
+        self.exchange = "NAS"
         self.currency = "USD"
         
         # Force Real Mode
         self.env_mode = 'real'
 
     def get_price(self, symbol):
-        return api.get_current_price(self.trenv, self.exchange, symbol)
+        # Use correct exchange code for each symbol
+        # NAS for NASDAQ, AMS for NYSE American
+        PRICE_EXCHANGES = {
+            'TQQQ': 'NAS', 'QQQ': 'NAS', 'SHV': 'NAS', 'SOXL': 'NAS',
+            'MAGS': 'AMS', 'JEPI': 'AMS', 'SPY': 'AMS', 'SCHD': 'AMS'
+        }
+        exchange = PRICE_EXCHANGES.get(symbol, 'NAS')
+        return api.get_current_price(self.trenv, exchange, symbol)
 
     def get_balance(self):
         """Returns: (cash, quantity_of_main_symbol, avg_price_of_main_symbol)"""
@@ -90,44 +97,68 @@ class Trader:
             return False
             
         logger.info(f"Buying {target}: {qty} @ ${price}")
-        self.notifier.send(f"🛒 **BUYING** `{target}`\nQty: {qty}\nPrice: ${price}\nAmt: ${amount:.2f}")
+        logger.info(f"[ORDER] Type: MARKET, Symbol: {target}, Qty: {qty}, Price: ${price:.2f}")
+        self.notifier.send(f"[BUYING] {target}\nQty: {qty}\nPrice: ${price}\nAmt: ${amount:.2f}")
+        
+        # Use limit order at current price + $0.01 for immediate fill
+        limit_price = price + 0.01
+        
+        # IMPORTANT: Order API uses different exchange codes than price API
+        # NASD for NASDAQ stocks (TQQQ, SHV, QQQ)
+        # AMEX for NYSE American stocks (MAGS, JEPI, SPY)
+        ORDER_EXCHANGES = {
+            'TQQQ': 'NASD', 'QQQ': 'NASD', 'SHV': 'NASD', 'SOXL': 'NASD',
+            'MAGS': 'AMEX', 'JEPI': 'AMEX', 'SPY': 'AMEX', 'SCHD': 'AMEX'
+        }
+        order_exchange = ORDER_EXCHANGES.get(target, 'NASD')
+        logger.info(f"[ORDER] Using exchange: {order_exchange} for {target}")
         
         res = api.order(
             "buy",
             self.trenv.my_acct,
             self.trenv.my_prod,
-            self.exchange,
+            order_exchange,  # Use NASD for orders
             target,
             qty,
-            f"{price:.2f}", # Limit Price
-            "00" # Limit
+            f"{limit_price:.2f}",  # Limit price +1 tick for immediate fill
+            "00"  # Limit Order
         )
         
         if res is not None and not res.empty:
-            self.notifier.send(f"✅ Order Sent: {target}")
+            logger.info(f"[ORDER SUCCESS] {target} {qty} shares sent")
+            self.notifier.send(f"[ORDER SENT] {target}")
             return True
         else:
-            self.notifier.send(f"❌ Order Rejected: {target}")
+            logger.error(f"[ORDER FAILED] {target} order rejected")
+            self.notifier.send(f"[ORDER REJECTED] {target}")
             return False
 
     def get_all_holdings(self):
-        """Simple list of dicts"""
+        """Get all holdings from both NASD and AMEX exchanges"""
         out = []
-        try:
-            df1, _ = api.inquire_balance(
-                self.trenv.my_acct, 
-                self.trenv.my_prod, 
-                self.exchange, 
-                self.currency
-            )
-            if df1 is not None and not df1.empty:
-                for _, r in df1.iterrows():
-                    out.append({
-                        'symbol': r['ovrs_pdno'],
-                        'qty': int(float(r['ovrs_cblc_qty'])),
-                        'avg_price': float(r['pchs_avg_pric']),
-                        'current_price': float(r.get('now_pric2', 0))
-                    })
-        except:
-            pass
+        exchanges = ["NASD", "AMEX"]  # Query both exchanges for all ETFs
+        
+        for exchange in exchanges:
+            try:
+                df1, _ = api.inquire_balance(
+                    self.trenv.my_acct, 
+                    self.trenv.my_prod, 
+                    exchange, 
+                    self.currency
+                )
+                if df1 is not None and not df1.empty:
+                    for _, r in df1.iterrows():
+                        symbol = r.get('ovrs_pdno', '')
+                        qty = int(float(r.get('ovrs_cblc_qty', 0)))
+                        if symbol and qty > 0:
+                            out.append({
+                                'symbol': symbol,
+                                'qty': qty,
+                                'avg_price': float(r.get('pchs_avg_pric', 0)),
+                                'current_price': float(r.get('now_pric2', 0))
+                            })
+                            logger.info(f"[HOLDINGS] {symbol}: {qty}주 @ ${r.get('pchs_avg_pric')} ({exchange})")
+            except Exception as e:
+                logger.warning(f"[HOLDINGS] Failed to query {exchange}: {e}")
+        
         return out

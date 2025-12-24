@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-
+﻿# -*- coding: utf-8 -*-
 """
 KIS API Authentication Module (Production Only / Clean Version)
 """
@@ -36,7 +36,7 @@ def auth(svr='prod', product='01'):
     # root: open-trading-api/
     
     config_path = os.path.join(ROOT_DIR, 'kis_devlp.yaml')
-    logger.info(f"🔑 Auth looking for config at: {config_path}")
+    logger.info(f"?뵎[Auth] Looking for config at: {config_path}")
     
     if not os.path.exists(config_path):
         raise FileNotFoundError(f"Config file not found at {config_path}")
@@ -66,7 +66,7 @@ def auth(svr='prod', product='01'):
         my_url=base_url
     )
     
-    logger.info(f"✅ Authentication Success (Account: {acc_no})")
+    logger.info(f"??Authentication Success (Account: {acc_no})")
     return _trenv
 
 def _get_valid_token(app_key, app_secret, base_url):
@@ -116,3 +116,4 @@ def _issue_token(app_key, app_secret, base_url):
         }, f)
         
     return access_token
+

@@ -32,7 +32,7 @@ params = {
 
 headers = {
     "Content-Type": "application/json",
-    "authorization": ka._base_headers.get('authorization', ''),
+    "authorization": trenv.my_token,
     "appkey": trenv.my_app,
     "appsecret": trenv.my_sec,
     "tr_id": tr_id,

@@ -38,7 +38,7 @@ class Notifier:
 
     def send_bot_started(self):
         """Send bot started notification"""
-        self.send("🚀 Bot Started\nTrading bot is now running.")
+        self.send("[Bot Started] Trading bot is now running.")
 
     def send_bot_stopped(self):
         """Send bot stopped notification"""

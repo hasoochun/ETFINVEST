@@ -130,20 +130,23 @@ def main():
     
     while True:
         try:
-            # 0. Check if trading is enabled
+            # 0. Sync Config (Control Mechanism)
+            bot_controller.sync_with_config()
+
+            # 1. Check if trading is enabled
             if not bot_controller.is_running:
                 logger.info("Trading not started. Waiting for user command...")
                 time.sleep(5)
                 continue
             
-            # 1. Check Market Status
+            # 2. Check Market Status
             if not scheduler.is_market_open():
                 logger.info("Market is closed. Sleeping...")
                 time.sleep(60)
                 continue
 
             # 2. Get Data
-            current_price = trader.get_price()
+            current_price = trader.get_price(bot_controller.trading_symbol)
             buying_power, quantity, avg_price = trader.get_balance()
             
             if current_price is None:
@@ -202,47 +205,136 @@ def main():
                 time.sleep(60)
                 continue
 
-            # 4. Buy Logic - Accelerated or Daily Mode
+            # 4. Buy Logic - Gradual or S-T Exchange Mode
             is_near_close = scheduler.is_near_close(minutes=5)
             
-            # Check accelerated mode (buy every 10 minutes)
+            # Get trading mode from config
+            trading_mode = getattr(bot_controller, 'trading_mode', 'gradual')
+            gradual_interval = getattr(bot_controller, 'gradual_interval', 5)
+            
+            # Check interval for gradual mode
             force_buy = False
-            if bot_controller.dip_buy_mode == 'accelerated':
+            if trading_mode == 'gradual':
                 now = datetime.now()
                 last_buy = bot_controller.last_dip_buy_time
-                if last_buy is None or (now - last_buy) >= timedelta(minutes=10):
+                if last_buy is None or (now - last_buy) >= timedelta(minutes=gradual_interval):
                     force_buy = True
-                    logger.info("⚡ Accelerated mode: 10 minutes elapsed, forcing buy check")
+                    logger.info(f"[GRADUAL] Mode active: {gradual_interval} minutes elapsed, buying all ETFs simultaneously")
+            elif trading_mode == 'st-exchange':
+                # S-T Exchange: Check if it's the scheduled time for SHV->TQQQ exchange
+                daily_time = getattr(bot_controller, 'daily_time', '22:00')
+                now = datetime.now()
+                # Check if current time matches daily_time (within 1 minute)
+                target_hour, target_minute = map(int, daily_time.split(':'))
+                if now.hour == target_hour and now.minute == target_minute:
+                    if not hasattr(bot_controller, 'last_st_exchange_date') or bot_controller.last_st_exchange_date != now.date():
+                        force_buy = True
+                        bot_controller.last_st_exchange_date = now.date()
+                        logger.info(f"[S-T EXCHANGE] Scheduled time reached: {daily_time}, executing SHV->TQQQ exchange")
+
             
             should_buy, split_count = strategy.should_buy(current_price, avg_price, quantity, is_near_close, force_buy)
             
             if should_buy and split_count > 0 and bot_controller.entry_allowed:
-                buy_amount = buying_power / split_count
-                buy_qty = int(buy_amount / current_price)
+                # === PORTFOLIO REBALANCING LOGIC ===
+                # Get target allocations from config
+                target_portfolio = bot_controller.get_target_portfolio()
+                if not target_portfolio:
+                    target_portfolio = {"TQQQ": 0.3, "MAGS": 0.2, "SHV": 0.3, "JEPI": 0.2}
                 
-                if buy_qty > 0:
-                    # Fixed: pass symbol to trader.buy()
-                    trader.buy(bot_controller.trading_symbol, buy_amount)
+                # Get current holdings
+                all_holdings = trader.get_all_holdings()
+                holdings_dict = {h['symbol']: h for h in all_holdings}
+                
+                # Calculate total portfolio value
+                total_value = buying_power
+                for h in all_holdings:
+                    total_value += h['qty'] * h.get('current_price', h['avg_price'])
+                
+                # === GRADUAL MODE: Buy ALL ETFs with deficit simultaneously ===
+                if trading_mode == 'gradual':
+                    etfs_to_buy = []
+                    for symbol, target_pct in target_portfolio.items():
+                        if target_pct <= 0:
+                            continue
+                        
+                        current_qty = holdings_dict.get(symbol, {}).get('qty', 0)
+                        current_price_sym = trader.get_price(symbol)
+                        if current_price_sym <= 0:
+                            continue
+                        
+                        current_value = current_qty * current_price_sym
+                        current_pct = (current_value / total_value) * 100 if total_value > 0 else 0
+                        target_pct_100 = target_pct * 100 if target_pct <= 1 else target_pct
+                        
+                        deficit = target_pct_100 - current_pct
+                        
+                        if deficit > 1:  # At least 1% deficit
+                            etfs_to_buy.append({
+                                'symbol': symbol,
+                                'price': current_price_sym,
+                                'deficit': deficit
+                            })
                     
-                    # Update last dip buy time for accelerated mode
-                    bot_controller.last_dip_buy_time = datetime.now()
+                    # Buy 1 share of each ETF with deficit
+                    if etfs_to_buy:
+                        logger.info(f"[GRADUAL] Buying 1 share of each: {[e['symbol'] for e in etfs_to_buy]}")
+                        for etf in etfs_to_buy:
+                            try:
+                                buy_amount = etf['price'] * 1.01  # Price + 1 cent for limit order
+                                trader.buy(buy_amount, etf['symbol'])
+                                log_trade("buy", etf['symbol'], 1, etf['price'], reason=f"Gradual: {etf['deficit']:.1f}% deficit")
+                                logger.info(f"[GRADUAL] Bought 1 share of {etf['symbol']} @ ${etf['price']:.2f}")
+                            except Exception as e:
+                                logger.error(f"[GRADUAL] Failed to buy {etf['symbol']}: {e}")
+                        
+                        bot_controller.last_dip_buy_time = datetime.now()
+                        trade_counter += len(etfs_to_buy)
+                        time.sleep(60)
+                    else:
+                        logger.info("[GRADUAL] All ETFs at or above target allocation")
+                
+                # === S-T EXCHANGE MODE: Sell SHV, Buy TQQQ ===
+                elif trading_mode == 'st-exchange':
+                    # This is the core TQQQ infinite buying strategy
+                    # Sell SHV proportionally and buy TQQQ with the proceeds
+                    shv_holding = holdings_dict.get('SHV', {})
+                    shv_qty = shv_holding.get('qty', 0)
+                    shv_price = trader.get_price('SHV') or 110
                     
-                    # Log to dashboard with selected ETF
-                    log_trade(
-                        "buy",
-                        bot_controller.trading_symbol,
-                        buy_qty,
-                        current_price,
-                        reason=f"{'Accelerated' if force_buy else 'Daily'} mode signal"
-                    )
-                    logger.info(f"Buy logged to dashboard: {bot_controller.trading_symbol} {buy_qty} @ ${current_price:.2f}")
+                    tqqq_price = trader.get_price('TQQQ') or 55
                     
-                    # Update counters
-                    trade_counter += 1
-                    if entry_value == 0:
-                        entry_value = buying_power + (quantity * avg_price)
+                    # Determine how much SHV to sell based on strategy mode
+                    strategy_mode = getattr(bot_controller, 'strategy_mode', 'neutral')
+                    if strategy_mode == 'aggressive':
+                        sell_pct = 0.10  # Sell 10% of SHV
+                    elif strategy_mode == 'defensive':
+                        sell_pct = 0.02  # Sell 2% of SHV
+                    else:  # neutral
+                        sell_pct = 0.05  # Sell 5% of SHV
                     
-                    time.sleep(300)
+                    shv_to_sell = max(1, int(shv_qty * sell_pct))
+                    sell_amount = shv_to_sell * shv_price
+                    
+                    if shv_to_sell > 0 and shv_qty >= shv_to_sell:
+                        logger.info(f"[S-T EXCHANGE] Selling {shv_to_sell} SHV @ ${shv_price:.2f}")
+                        trader.sell_all(shv_to_sell)  # TODO: implement sell with specific qty
+                        
+                        # Buy TQQQ with proceeds
+                        tqqq_to_buy = int(sell_amount / tqqq_price)
+                        if tqqq_to_buy > 0:
+                            logger.info(f"[S-T EXCHANGE] Buying {tqqq_to_buy} TQQQ @ ${tqqq_price:.2f}")
+                            trader.buy(sell_amount, 'TQQQ')
+                            log_trade("buy", "TQQQ", tqqq_to_buy, tqqq_price, reason=f"S-T Exchange ({strategy_mode})")
+                        
+                        trade_counter += 1
+                        time.sleep(60)
+                    else:
+                        logger.info("[S-T EXCHANGE] Not enough SHV to exchange")
+                
+                # Update entry value for drawdown calculation
+                if entry_value == 0:
+                    entry_value = buying_power + (quantity * avg_price)
             
             time.sleep(10)
 

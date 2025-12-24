@@ -1,0 +1,9 @@
+# KIS Development Config (Placeholder)
+# Real credentials should be loaded from .env
+virtual_account: false
+market: "NASD"
+currency: "USD"
+
+notification:
+  telegram_token: ""
+  telegram_chat_id: ""
