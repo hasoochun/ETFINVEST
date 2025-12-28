@@ -1,16 +1,23 @@
 {
-  "command": "stop",
+  "command": "start",
   "strategy_mode": "neutral",
   "target_portfolio": {
-    "TQQQ": 0.1,
-    "SHV": 0.5,
-    "MAGS": 0.2,
-    "JEPI": 0.2,
+    "TQQQ": 0.23,
+    "MAGS": 0.17,
+    "SHV": 0.43,
+    "JEPI": 0.17,
     "SCHD": 0
   },
-  "last_updated": "2025-12-25T02:37:12.528288",
+  "last_updated": "2025-12-27T23:04:44.015221",
   "dip_buy_mode": "accelerated",
   "trading_mode": "st-exchange",
   "gradual_interval": 5,
-  "daily_time": "04:00"
+  "daily_time": "23:33",
+  "gradual_targets": [
+    "JEPI",
+    "SCHD"
+  ],
+  "scheduled_qty": 1,
+  "scheduled_symbol": "TQQQ",
+  "scheduled_time": "23:41"
 }

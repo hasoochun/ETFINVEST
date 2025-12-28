@@ -133,6 +133,64 @@ class Trader:
             self.notifier.send(f"[ORDER REJECTED] {target}")
             return False
 
+    def sell(self, qty, symbol=None, reason=None):
+        """
+        Sell a specific quantity of shares.
+        
+        Args:
+            qty: Number of shares to sell
+            symbol: Stock symbol (default: self.symbol)
+            reason: Reason for selling (for logging)
+        
+        Returns:
+            bool: True if order was sent successfully
+        """
+        target = symbol or self.symbol
+        price = self.get_price(target)
+        
+        if price <= 0:
+            self.notifier.send(f"❌ Sell Failed: Invalid Price for {target}")
+            return False
+        
+        if qty <= 0:
+            logger.info(f"Sell skipped: Invalid quantity {qty}")
+            return False
+        
+        logger.info(f"Selling {target}: {qty} @ ${price}")
+        reason_str = f" ({reason})" if reason else ""
+        self.notifier.send(f"[SELLING] {target}{reason_str}\nQty: {qty}\nPrice: ${price}")
+        
+        # Use limit order at current price - $0.01 for immediate fill
+        limit_price = price - 0.01
+        
+        # IMPORTANT: Order API uses different exchange codes than price API
+        ORDER_EXCHANGES = {
+            'TQQQ': 'NASD', 'QQQ': 'NASD', 'SHV': 'NASD', 'SOXL': 'NASD',
+            'MAGS': 'AMEX', 'JEPI': 'AMEX', 'SPY': 'AMEX', 'SCHD': 'AMEX'
+        }
+        order_exchange = ORDER_EXCHANGES.get(target, 'NASD')
+        logger.info(f"[ORDER] Using exchange: {order_exchange} for {target}")
+        
+        res = api.order(
+            "sell",
+            self.trenv.my_acct,
+            self.trenv.my_prod,
+            order_exchange,
+            target,
+            qty,
+            f"{limit_price:.2f}",
+            "00"  # Limit Order
+        )
+        
+        if res is not None and not res.empty:
+            logger.info(f"[ORDER SUCCESS] Sold {target} {qty} shares")
+            self.notifier.send(f"[SELL ORDER SENT] {target}")
+            return True
+        else:
+            logger.error(f"[ORDER FAILED] {target} sell order rejected")
+            self.notifier.send(f"[SELL ORDER REJECTED] {target}")
+            return False
+
     def get_all_holdings(self):
         """Get all holdings from both NASD and AMEX exchanges"""
         out = []

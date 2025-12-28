@@ -85,6 +85,25 @@ def init_db():
         )
     """)
     
+    # Portfolio history table (for performance tracking & benchmark comparison)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS portfolio_history (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            timestamp TEXT NOT NULL,
+            date TEXT NOT NULL UNIQUE,
+            total_value REAL NOT NULL,
+            cash_balance REAL DEFAULT 0,
+            invested_value REAL DEFAULT 0,
+            daily_return_pct REAL DEFAULT 0,
+            cumulative_return_pct REAL DEFAULT 0,
+            benchmark_value REAL,
+            benchmark_return_pct REAL DEFAULT 0,
+            mdd_pct REAL DEFAULT 0,
+            peak_value REAL,
+            holdings_json TEXT
+        )
+    """)
+    
     conn.commit()
     conn.close()
 
@@ -267,3 +286,211 @@ def get_current_stats():
 
 # Initialize DB on import
 init_db()
+
+# =============================================================================
+# PORTFOLIO HISTORY FUNCTIONS (for Performance Report)
+# =============================================================================
+
+import json
+import logging
+
+logger = logging.getLogger(__name__)
+
+def log_portfolio_history(
+    total_value: float,
+    cash_balance: float = 0,
+    invested_value: float = 0,
+    daily_return_pct: float = 0,
+    cumulative_return_pct: float = 0,
+    benchmark_value: float = None,
+    benchmark_return_pct: float = 0,
+    holdings: list = None
+):
+    """
+    Log daily portfolio snapshot for performance tracking.
+    Uses UPSERT to update if same date exists.
+    
+    Args:
+        total_value: Total portfolio value in USD
+        cash_balance: Cash balance in USD
+        invested_value: Invested amount in USD
+        daily_return_pct: Daily return percentage
+        cumulative_return_pct: Cumulative return since inception
+        benchmark_value: S&P 500 index value (for comparison)
+        benchmark_return_pct: Benchmark cumulative return
+        holdings: List of holdings with qty, symbol, value
+    """
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    
+    timestamp = datetime.now().isoformat()
+    date = datetime.now().date().isoformat()
+    
+    # Calculate MDD
+    cursor.execute("SELECT MAX(peak_value) FROM portfolio_history")
+    result = cursor.fetchone()
+    peak_value = result[0] if result and result[0] else total_value
+    peak_value = max(peak_value, total_value)
+    
+    mdd_pct = 0.0
+    if peak_value > 0:
+        mdd_pct = ((total_value - peak_value) / peak_value) * 100
+    
+    # Serialize holdings to JSON
+    holdings_json = json.dumps(holdings, ensure_ascii=False) if holdings else None
+    
+    try:
+        cursor.execute("""
+            INSERT INTO portfolio_history 
+            (timestamp, date, total_value, cash_balance, invested_value,
+             daily_return_pct, cumulative_return_pct, benchmark_value, 
+             benchmark_return_pct, mdd_pct, peak_value, holdings_json)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(date) DO UPDATE SET
+                timestamp = excluded.timestamp,
+                total_value = excluded.total_value,
+                cash_balance = excluded.cash_balance,
+                invested_value = excluded.invested_value,
+                daily_return_pct = excluded.daily_return_pct,
+                cumulative_return_pct = excluded.cumulative_return_pct,
+                benchmark_value = excluded.benchmark_value,
+                benchmark_return_pct = excluded.benchmark_return_pct,
+                mdd_pct = excluded.mdd_pct,
+                peak_value = excluded.peak_value,
+                holdings_json = excluded.holdings_json
+        """, (timestamp, date, total_value, cash_balance, invested_value,
+              daily_return_pct, cumulative_return_pct, benchmark_value,
+              benchmark_return_pct, mdd_pct, peak_value, holdings_json))
+        
+        conn.commit()
+        logger.info(f"[DB] Portfolio history saved: date={date}, total=${total_value:.2f}, return={cumulative_return_pct:.2f}%, mdd={mdd_pct:.2f}%")
+    except Exception as e:
+        logger.error(f"[DB] Failed to log portfolio history: {e}")
+    finally:
+        conn.close()
+
+
+def get_portfolio_history(days: int = 30) -> pd.DataFrame:
+    """
+    Get portfolio history for the last N days.
+    
+    Args:
+        days: Number of days to retrieve
+        
+    Returns:
+        DataFrame with portfolio history
+    """
+    conn = sqlite3.connect(DB_PATH)
+    query = f"""
+        SELECT date, total_value, cash_balance, invested_value,
+               daily_return_pct, cumulative_return_pct, 
+               benchmark_value, benchmark_return_pct, mdd_pct, holdings_json
+        FROM portfolio_history 
+        WHERE date >= date('now', '-{days} days')
+        ORDER BY date ASC
+    """
+    df = pd.read_sql_query(query, conn)
+    conn.close()
+    logger.info(f"[DB] Retrieved {len(df)} portfolio history records (last {days} days)")
+    return df
+
+
+def get_latest_portfolio_snapshot():
+    """
+    Get the most recent portfolio snapshot.
+    
+    Returns:
+        Dict with latest portfolio data or None
+    """
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT date, total_value, cash_balance, invested_value,
+               daily_return_pct, cumulative_return_pct, 
+               benchmark_value, benchmark_return_pct, mdd_pct, holdings_json
+        FROM portfolio_history 
+        ORDER BY date DESC 
+        LIMIT 1
+    """)
+    row = cursor.fetchone()
+    conn.close()
+    
+    if row:
+        return {
+            'date': row[0],
+            'total_value': row[1],
+            'cash_balance': row[2],
+            'invested_value': row[3],
+            'daily_return_pct': row[4],
+            'cumulative_return_pct': row[5],
+            'benchmark_value': row[6],
+            'benchmark_return_pct': row[7],
+            'mdd_pct': row[8],
+            'holdings': json.loads(row[9]) if row[9] else []
+        }
+    return None
+
+
+def get_performance_metrics():
+    """
+    Calculate key performance metrics for investment analysis.
+    
+    Returns:
+        Dict with performance metrics including:
+        - total_return: Cumulative return percentage
+        - mdd: Maximum Drawdown
+        - sharpe_ratio: Risk-adjusted return (simplified)
+        - win_rate: Percentage of positive days
+        - avg_daily_return: Average daily return
+        - volatility: Standard deviation of daily returns
+    """
+    conn = sqlite3.connect(DB_PATH)
+    df = pd.read_sql_query("""
+        SELECT date, daily_return_pct, cumulative_return_pct, mdd_pct
+        FROM portfolio_history 
+        ORDER BY date ASC
+    """, conn)
+    conn.close()
+    
+    if df.empty:
+        return {
+            'total_return': 0,
+            'mdd': 0,
+            'sharpe_ratio': 0,
+            'win_rate': 0,
+            'avg_daily_return': 0,
+            'volatility': 0,
+            'total_days': 0
+        }
+    
+    daily_returns = df['daily_return_pct'].dropna()
+    
+    # Basic metrics
+    total_return = df['cumulative_return_pct'].iloc[-1] if len(df) > 0 else 0
+    mdd = df['mdd_pct'].min() if len(df) > 0 else 0
+    
+    # Win rate (positive return days)
+    positive_days = (daily_returns > 0).sum()
+    total_days = len(daily_returns)
+    win_rate = (positive_days / total_days * 100) if total_days > 0 else 0
+    
+    # Average daily return and volatility
+    avg_daily = daily_returns.mean() if len(daily_returns) > 0 else 0
+    volatility = daily_returns.std() if len(daily_returns) > 1 else 0
+    
+    # Simplified Sharpe Ratio (annualized, assuming 252 trading days)
+    # Sharpe = (avg_return - risk_free_rate) / volatility
+    # Using 0% risk-free rate for simplicity
+    sharpe_ratio = 0
+    if volatility > 0:
+        sharpe_ratio = (avg_daily * 252**0.5) / (volatility * 252**0.5)
+    
+    return {
+        'total_return': round(total_return, 2),
+        'mdd': round(mdd, 2),
+        'sharpe_ratio': round(sharpe_ratio, 2),
+        'win_rate': round(win_rate, 1),
+        'avg_daily_return': round(avg_daily, 3),
+        'volatility': round(volatility, 3),
+        'total_days': total_days
+    }

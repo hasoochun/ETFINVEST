@@ -4,7 +4,7 @@ import asyncio
 import logging
 from telegram import Bot
 from typing import Dict
-from .formatters.messages import (
+from infinite_buying_bot.telegram_bot.formatters.messages import (
     format_trade_notification,
     format_profit_target_notification,
     format_error_notification

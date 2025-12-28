@@ -138,6 +138,7 @@ class PortfolioManager:
                 diff_value = target_value - current_value
                 
                 if diff_value > 0:
+                    # Need to buy - no restrictions
                     trades.append({
                         'symbol': symbol,
                         'action': 'buy',
@@ -145,12 +146,31 @@ class PortfolioManager:
                         'reason': f'Rebalance: {current_pct:.1%} → {target_pct:.1%}'
                     })
                 else:
-                    trades.append({
-                        'symbol': symbol,
-                        'action': 'sell',
-                        'amount_krw': abs(diff_value),
-                        'reason': f'Rebalance: {current_pct:.1%} → {target_pct:.1%}'
-                    })
+                    # Need to sell - check profit protection
+                    pos = self.positions[symbol]
+                    avg_price = pos['avg_price']
+                    current_price = pos['current_price']
+                    
+                    # Calculate profit percentage
+                    if avg_price > 0:
+                        profit_pct = ((current_price - avg_price) / avg_price) * 100
+                    else:
+                        profit_pct = 0
+                    
+                    # [LOSS PROTECTION] Only sell if:
+                    # 1. In profit (profit_pct > 0)
+                    # 2. Profit >= 10%
+                    if profit_pct >= 10:
+                        trades.append({
+                            'symbol': symbol,
+                            'action': 'sell',
+                            'amount_krw': abs(diff_value),  # Only excess portion
+                            'reason': f'Profit taking ({profit_pct:.1f}%): {current_pct:.1%} → {target_pct:.1%}'
+                        })
+                        logger.info(f"[SELL] {symbol}: profit {profit_pct:.1f}% >= 10%, selling excess")
+                    else:
+                        # Skip sell - loss protection active
+                        logger.info(f"[SKIP SELL] {symbol}: profit {profit_pct:.1f}% < 10%, protecting position")
         
         return trades
     
@@ -185,3 +205,199 @@ class PortfolioManager:
         
         self.target_allocation = new_allocation
         logger.info(f"Target allocation updated: {new_allocation}")
+
+    def calculate_split_buy_order(self, targets: List[str] = None) -> List[Dict]:
+        """
+        Calculate single split-buy order for Gradual Mode
+        Logic: Find assets with >1% deficit and propose buying 1 share.
+        
+        Args:
+            targets: List of ETF symbols to filter (e.g., ['TQQQ', 'MAGS'])
+                     If None or ['all'], all ETFs are considered.
+        
+        Returns:
+            List of orders (usually 1 items): [{symbol, qty, price, type='buy'}]
+        """
+        orders = []
+        total_value = self.get_total_value()
+        current_alloc = self.get_current_allocation()
+        
+        # Determine which symbols to process
+        target_filter = targets if targets and 'all' not in targets else None
+        
+        for symbol, target_pct in self.target_allocation.items():
+            if target_pct <= 0: continue
+            
+            # Apply target filter if specified
+            if target_filter and symbol not in target_filter:
+                logger.debug(f"[SPLIT BUY] {symbol} skipped (not in targets: {target_filter})")
+                continue
+            
+            # Get current data from internal state (must be updated via update_positions first)
+            pos = self.positions.get(symbol, {'quantity': 0, 'current_price': 0.0})
+            price = pos['current_price']
+            if price <= 0: continue
+            
+            current_pct = current_alloc.get(symbol, 0.0)
+            target_pct_100 = target_pct * 100 if target_pct <= 1 else target_pct
+            current_pct_100 = current_pct * 100
+            
+            # Custom Logic: If Deficit > 1% check, propose buying 1 share
+            if target_pct_100 - current_pct_100 > 1.0:
+                 orders.append({
+                     'symbol': symbol,
+                     'qty': 1,
+                     'price': price,
+                     'type': 'buy',
+                     'reason': f"Gradual Split: Deficit {target_pct_100 - current_pct_100:.1f}%"
+                 })
+        
+        logger.info(f"[SPLIT BUY] Filter={targets}, Found {len(orders)} orders")
+        return orders
+
+    def calculate_st_exchange_order(self) -> List[Dict]:
+        """
+        Calculate S-T Exchange orders (Sell SHV / Buy TQQQ)
+        
+        Returns:
+             List of orders
+        """
+        orders = []
+        shv_pos = self.positions.get('SHV', {})
+        shv_qty = shv_pos.get('quantity', 0)
+        
+        if shv_qty > 0:
+            # Sell 5% (hardcoded strategy logic for now)
+            sell_qty = max(1, int(shv_qty * 0.05))
+            orders.append({
+                'symbol': 'SHV',
+                'qty': sell_qty,
+                'type': 'sell',
+                'reason': "S-T Exchange: Swap Start"
+            })
+            # Note: Buy order for TQQQ usually happens after fill, or we can assume instant swap in mock
+            
+        return orders
+
+    def calculate_single_rebalance_order(self, symbol: str, cash_available: float = 0.0) -> Dict:
+        """
+        Calculate order to rebalance a single ETF to its target allocation.
+        
+        Args:
+            symbol: ETF symbol to rebalance (e.g., 'TQQQ', 'MAGS')
+            cash_available: Available cash for buying
+            
+        Returns:
+            Dict with order details:
+            {
+                'symbol': str,
+                'qty': int,
+                'price': float,
+                'type': 'buy' | 'sell',
+                'amount_usd': float,
+                'reason': str,
+                'current_pct': float,
+                'target_pct': float
+            }
+            or empty dict if no action needed
+        """
+        # Validate symbol
+        if symbol not in self.target_allocation:
+            logger.warning(f"[SINGLE REBALANCE] Unknown symbol: {symbol}")
+            return {'error': f'Unknown symbol: {symbol}'}
+        
+        target_pct = self.target_allocation[symbol]
+        if target_pct <= 0:
+            logger.info(f"[SINGLE REBALANCE] {symbol} has 0% target allocation")
+            return {'error': f'{symbol} has 0% target allocation'}
+        
+        # Get current position
+        pos = self.positions.get(symbol, {'quantity': 0, 'current_price': 0.0, 'avg_price': 0.0})
+        current_qty = pos.get('quantity', 0)
+        current_price = pos.get('current_price', 0.0)
+        
+        if current_price <= 0:
+            logger.warning(f"[SINGLE REBALANCE] {symbol} price not available")
+            return {'error': f'{symbol} price not available'}
+        
+        # Calculate values
+        total_value = self.get_total_value()
+        current_value = current_qty * current_price
+        current_pct = (current_value / total_value) if total_value > 0 else 0
+        target_value = total_value * target_pct
+        
+        # Calculate difference
+        diff_value = target_value - current_value
+        diff_qty = int(diff_value / current_price)
+        
+        logger.info(f"[SINGLE REBALANCE] {symbol}: Current {current_pct*100:.1f}% → Target {target_pct*100:.1f}%")
+        logger.info(f"[SINGLE REBALANCE] {symbol}: Diff ${diff_value:.2f} = {diff_qty} shares @ ${current_price:.2f}")
+        
+        if abs(diff_qty) < 1:
+            logger.info(f"[SINGLE REBALANCE] {symbol} already at target (diff < 1 share)")
+            return {
+                'symbol': symbol,
+                'qty': 0,
+                'price': current_price,
+                'type': 'hold',
+                'amount_usd': 0,
+                'reason': 'Already at target allocation',
+                'current_pct': current_pct * 100,
+                'target_pct': target_pct * 100
+            }
+        
+        if diff_qty > 0:
+            # Need to buy
+            # Check cash availability
+            required_cash = diff_qty * current_price
+            if cash_available > 0 and required_cash > cash_available:
+                # Adjust quantity to available cash
+                diff_qty = int(cash_available / current_price)
+                if diff_qty < 1:
+                    return {'error': f'Insufficient cash. Need ${required_cash:.2f}, have ${cash_available:.2f}'}
+                logger.info(f"[SINGLE REBALANCE] Adjusted qty to {diff_qty} due to cash limit")
+            
+            return {
+                'symbol': symbol,
+                'qty': diff_qty,
+                'price': current_price,
+                'type': 'buy',
+                'amount_usd': diff_qty * current_price,
+                'reason': f'Rebalance: {current_pct*100:.1f}% → {target_pct*100:.1f}%',
+                'current_pct': current_pct * 100,
+                'target_pct': target_pct * 100
+            }
+        else:
+            # Need to sell (diff_qty is negative)
+            
+            # [LOSS PROTECTION] Check profit before selling
+            profit_pct = ((current_price - avg_price) / avg_price) * 100 if avg_price > 0 else 0
+            
+            if profit_pct >= 10:
+                # Profit >= 10%, allow sell
+                logger.info(f"[SINGLE REBALANCE] {symbol}: Profit {profit_pct:.1f}% >= 10%, allow sell")
+                return {
+                    'symbol': symbol,
+                    'qty': abs(diff_qty),
+                    'price': current_price,
+                    'type': 'sell',
+                    'amount_usd': abs(diff_qty) * current_price,
+                    'reason': f'Profit taking ({profit_pct:.1f}%): {current_pct*100:.1f}% → {target_pct*100:.1f}%',
+                    'current_pct': current_pct * 100,
+                    'target_pct': target_pct * 100
+                }
+            else:
+                # Profit < 10%, protect position
+                logger.info(f"[SINGLE REBALANCE] {symbol}: Profit {profit_pct:.1f}% < 10%, SKIP SELL (loss protection)")
+                return {
+                    'symbol': symbol,
+                    'qty': 0,
+                    'price': current_price,
+                    'type': 'hold',
+                    'amount_usd': 0,
+                    'reason': f'Loss protection: profit {profit_pct:.1f}% < 10%',
+                    'current_pct': current_pct * 100,
+                    'target_pct': target_pct * 100,
+                    'protected': True  # Flag for UI
+                }
+

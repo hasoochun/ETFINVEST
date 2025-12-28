@@ -11,14 +11,17 @@ if root_dir not in sys.path:
 import logging
 import argparse
 import time
+import asyncio # Fixed missing import
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler
 from infinite_buying_bot.config.logging_config import setup_logging
 from infinite_buying_bot.core.trader import Trader
 from infinite_buying_bot.core.portfolio_manager import PortfolioManager
-from infinite_buying_bot.telegram_bot.bot import Notifier
+from infinite_buying_bot.telegram_bot.notifications import TelegramNotifier as Notifier # Fixed Import
 from infinite_buying_bot.api.bot_controller import BotController
 from infinite_buying_bot.telegram_bot.handlers.callbacks import setup_handlers
 import infinite_buying_bot.telegram_bot.formatters.portfolio_messages as pm
+from infinite_buying_bot.utils.bot_status_manager import BotStatusManager
+from datetime import datetime, timedelta
 
 # Setup Logging
 setup_logging()
@@ -38,18 +41,63 @@ def load_config():
     with open(config_path, 'r', encoding='utf-8') as f:
         return yaml.load(f, Loader=yaml.FullLoader)
 
+# --- Async Background Service ---
+async def status_service(controller, manager):
+    logger.info("✅ Status Service Started")
+    last_monitor = 0
+    last_config = 0
+    
+    while True:
+        try:
+            now = time.time()
+            
+            # 1. Heartbeat (Every 1s)
+            manager.update_heartbeat()
+            
+            # 2. Config Sync (Every 5s)
+            if now - last_config >= 5:
+                controller.sync_with_config()
+                manager.set_config_info(
+                    controller.strategy_mode, 
+                    controller.trading_mode, 
+                    controller.accel_interval_minutes
+                )
+                manager.set_status('running' if controller.is_running else 'paused')
+                last_config = now
+                
+            # 3. Monitor Cycle (Every 10s for Demo)
+            if now - last_monitor >= 10:
+                next_run = datetime.now() + timedelta(seconds=10)
+                manager.set_schedule(next_run, "Next Monitoring Cycle")
+                controller.run_monitoring_cycle()
+                last_monitor = now
+                
+            await asyncio.sleep(1)
+            
+        except Exception as e:
+            logger.error(f"Status Loop Error: {e}")
+            await asyncio.sleep(5)
+
+async def post_init(application: Application):
+    """Start background tasks on bot startup"""
+    # Get references from application.bot_data (we need to store them there first)
+    controller = application.bot_data['controller']
+    manager = application.bot_data['manager']
+    
+    # Start the service
+    asyncio.create_task(status_service(controller, manager))
+
+
 def main():
     logger.info("🚀 Starting Bot (CLEAN REAL VERSION)")
     
-    # Files Cleanup
+    # Files Cleanup (PID only - DO NOT DELETE trading.db!)
     try:
-        # DB Delete
-        db_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'dashboard', 'trading.db')
-        if os.path.exists(db_path):
-            os.remove(db_path)
-            logger.info("Deleted DB File")
+        # [REMOVED] DB Delete - Keep trading.db for portfolio history tracking!
+        # db_path = os.path.join(..., 'trading.db')
+        # os.remove(db_path)  # <- This was deleting all history data!
             
-        # Pid Delete
+        # Pid Delete (safe to remove)
         pid_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '.bot.pid')
         if os.path.exists(pid_path):
             os.remove(pid_path)
@@ -58,7 +106,10 @@ def main():
 
     try:
         config = load_config()
-        notifier = Notifier(config) # Assuming this works or needs minimal config
+        # Fix: Pass individual args instead of config dict
+        token = config.get('telegram_token')
+        chat_id = config.get('telegram_chat_id')
+        notifier = Notifier(token, chat_id) 
         
         # Initialize Core - Fail Fast
         trader = Trader(config, notifier)
@@ -87,8 +138,20 @@ def main():
              logger.error("No Telegram Token in Config")
              return
 
-        app = Application.builder().token(token).build()
+        # [NEW] Status Manager Setup
+        status_manager = BotStatusManager(root_dir)
+        bot_controller.set_status_manager(status_manager)
+
+        # Use post_init to start background tasks
+        app = Application.builder().token(token).post_init(post_init).build()
+        
+        # Store refs for post_init
+        app.bot_data['controller'] = bot_controller
+        app.bot_data['manager'] = status_manager
+        
         setup_handlers(app, bot_controller)
+        
+        logger.info("✅ Status System Initialized (No JobQueue)")
         
         # Notify Start with UNIQUE IDENTIFIER
         notifier.send("📢 **[LOCAL-PC-VERIFIED] SYSTEM ONLINE**\nMode: REAL TRADING\nStatus: Clean Boot")
