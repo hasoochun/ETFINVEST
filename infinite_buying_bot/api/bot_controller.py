@@ -2,7 +2,20 @@
 Bot Controller (Production Only / Clean Version)
 """
 import logging
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
+
+# KST (Korea Standard Time) = UTC+9
+KST = timezone(timedelta(hours=9))
+
+
+
+
+# KST (Korea Standard Time) = UTC+9
+KST = timezone(timedelta(hours=9))
+
+def get_kst_now():
+    """현재 시간을 KST로 반환 (서버 위치와 무관하게 항상 한국시간)"""
+    return datetime.now(KST).replace(tzinfo=None)  # naive datetime for comparison
 
 logger = logging.getLogger(__name__)
 
@@ -71,12 +84,15 @@ class BotController:
             
             # [NEW] Log Holdings to DB for Report Page
             try:
-                from infinite_buying_bot.dashboard.database import log_holdings
+                from infinite_buying_bot.dashboard.database import log_holdings, log_holdings_history
                 all_holdings = self.trader.get_all_holdings()
                 # Enriched with 'value' for DB
                 for h in all_holdings:
                     h['value'] = h['qty'] * h.get('current_price', 0)
                 log_holdings(all_holdings)
+                
+                # [NEW] Log holdings history for 5-minute interval tracking
+                log_holdings_history(all_holdings, strategy_mode=self.strategy_mode)
                 
                 # [NEW] Save portfolio history snapshot every 30 minutes
                 self._maybe_save_portfolio_snapshot(all_holdings, cash)
@@ -109,7 +125,7 @@ class BotController:
             
             if self.trading_mode == 'gradual':
                 # Gradual Mode: Check 1-minute interval
-                now = datetime.now()
+                now = get_kst_now()  # KST 시간 사용
                 interval_mins = getattr(self, 'gradual_interval', 1) 
                 interval_sec = interval_mins * 60
                 
@@ -139,7 +155,7 @@ class BotController:
                     
             elif self.trading_mode == 'st-exchange':
                 # S-T Exchange Mode: Check target time with market day awareness
-                now = datetime.now()
+                now = get_kst_now()  # KST 시간 사용 (사용자 입력과 일치)
                 target_str = getattr(self, 'daily_time', '16:00')
                 
                 # 다음 거래 가능 시간 계산 (휴장일 고려)
@@ -189,7 +205,7 @@ class BotController:
             
             elif self.trading_mode == 'scheduled-single':
                 # Scheduled Single Mode: Buy specific ETF at scheduled time
-                now = datetime.now()
+                now = get_kst_now()  # KST 시간 사용
                 target_str = getattr(self, 'scheduled_time', '22:00')
                 symbol = getattr(self, 'scheduled_symbol', 'TQQQ')
                 qty = getattr(self, 'scheduled_qty', 1)
@@ -283,7 +299,7 @@ class BotController:
                 executed = True
                 
         if executed:
-            self.last_dip_buy_time = datetime.now()
+            self.last_dip_buy_time = get_kst_now()
             if self.status_manager:
                 bought_list = [f"1 {o['symbol']}" for o in orders if o['type'] == 'buy']
                 msg = f"Bought {', '.join(bought_list)}"
@@ -304,7 +320,7 @@ class BotController:
         """
         from datetime import timedelta
         
-        now = datetime.now()
+        now = get_kst_now()  # KST 시간 사용
         target_hour, target_minute = map(int, target_time_str.split(':'))
         
         # 오늘 목표 시간
@@ -625,7 +641,7 @@ class BotController:
         Save portfolio snapshot every 30 minutes for performance report.
         Calculates daily/cumulative returns and MDD.
         """
-        now = datetime.now()
+        now = get_kst_now()
         
         # Check if 30 minutes have passed since last snapshot
         if self.last_snapshot_time:
@@ -827,7 +843,7 @@ class BotController:
         Returns:
             Mode string ('gradual', 'st-exchange', 'scheduled-single') or None
         """
-        now = datetime.now()
+        now = get_kst_now()
         current_time = now.hour * 60 + now.minute  # Minutes since midnight
         
         for zone in self.schedule_zones:
@@ -858,7 +874,7 @@ class BotController:
         
     def start_bot(self):
         self.is_running = True
-        self.start_time = datetime.now()
+        self.start_time = get_kst_now()
         if self.notifier: self.notifier.send("[BOT STARTED] (REAL)")
         
     def stop_bot(self):
@@ -873,7 +889,7 @@ class BotController:
             'market_open': True, # Simple assumption or check logic
             'market_status': "OPEN",
             'mode': "[REAL TRADING]", # HARDCODED
-            'uptime': str(datetime.now() - self.start_time).split('.')[0] if self.start_time else "0:00",
+            'uptime': str(get_kst_now() - self.start_time).split('.')[0] if self.start_time else "0:00",
             'next_open': "OPEN",
             'last_update': "Now"
         }

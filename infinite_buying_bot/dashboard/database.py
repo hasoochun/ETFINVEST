@@ -104,6 +104,29 @@ def init_db():
         )
     """)
     
+    # [NEW] Holdings history table for 5-minute interval snapshots (for reports & analysis)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS holdings_history (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            timestamp TEXT NOT NULL,
+            symbol TEXT NOT NULL,
+            quantity INTEGER,
+            avg_price REAL,
+            current_price REAL,
+            value REAL,
+            profit_pct REAL,
+            strategy_mode TEXT
+        )
+    """)
+    
+    # [NEW] Add strategy columns to portfolio_history (ignore if already exist)
+    for column in ['strategy_mode TEXT', 'trading_mode TEXT', 'graphrag_confidence REAL']:
+        try:
+            col_name = column.split()[0]
+            cursor.execute(f"ALTER TABLE portfolio_history ADD COLUMN {column}")
+        except sqlite3.OperationalError:
+            pass  # Column already exists
+    
     conn.commit()
     conn.close()
 
@@ -185,6 +208,47 @@ def log_holdings(holdings: list):
     
     conn.commit()
     conn.close()
+
+def log_holdings_history(holdings: list, strategy_mode: str = None):
+    """
+    [NEW] Log holdings snapshot to history table for 5-minute interval tracking.
+    Unlike log_holdings(), this APPENDS data for historical analysis.
+    
+    Args:
+        holdings: List of holdings with symbol, qty, avg_price, current_price, value
+        strategy_mode: Current strategy mode (aggressive/neutral/defensive)
+    """
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    
+    timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    
+    for h in holdings:
+        # Calculate profit percentage
+        avg_price = h.get('avg_price', 0)
+        current_price = h.get('current_price', 0)
+        profit_pct = 0
+        if avg_price > 0:
+            profit_pct = ((current_price - avg_price) / avg_price) * 100
+        
+        cursor.execute('''
+            INSERT INTO holdings_history 
+            (timestamp, symbol, quantity, avg_price, current_price, value, profit_pct, strategy_mode)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        ''', (
+            timestamp,
+            h['symbol'],
+            h.get('qty', 0),
+            avg_price,
+            current_price,
+            h.get('value', 0),
+            profit_pct,
+            strategy_mode
+        ))
+    
+    conn.commit()
+    conn.close()
+    logger.info(f"[DB] Holdings history saved: {len(holdings)} ETFs at {timestamp}")
 
 def get_current_holdings():
     """Get current holdings from database"""
