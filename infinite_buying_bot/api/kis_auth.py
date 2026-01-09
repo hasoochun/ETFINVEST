@@ -24,7 +24,34 @@ TREnv = namedtuple('TREnv', ['my_app', 'my_sec', 'my_acct', 'my_prod', 'my_token
 _trenv = None
 
 def getTREnv():
+    """Get TREnv with automatic token refresh if expired.
+    
+    [FIX 2026-01-10] 기존: 메모리의 오래된 토큰 그대로 반환
+    수정: 토큰 만료 시 자동으로 재인증하여 새 토큰 반환
+    """
+    global _trenv
+    
+    if _trenv is None:
+        return None
+    
+    # Check if token file exists and verify expiry
+    if os.path.exists(TOKEN_PATH):
+        try:
+            with open(TOKEN_PATH, 'r', encoding='utf-8') as f:
+                data = yaml.load(f, Loader=yaml.FullLoader)
+            
+            exp = datetime.strptime(data['expired_at'], "%Y-%m-%d %H:%M:%S")
+            
+            # If token expired or will expire in 30 minutes, re-auth
+            if exp <= datetime.now() + timedelta(minutes=30):
+                logger.warning(f"[Auth] Token expired or expiring soon (exp: {exp}), re-authenticating...")
+                auth()  # Re-authenticate with fresh token
+                
+        except Exception as e:
+            logger.error(f"[Auth] Token expiry check failed: {e}")
+    
     return _trenv
+
 
 def auth(svr='prod', product='01'):
     """Authenticate to KIS (PROD ONLY)"""
