@@ -4,14 +4,54 @@ Stores: trades, daily snapshots, current position
 """
 import sqlite3
 import pandas as pd
+import time
+import functools
 from datetime import datetime
 from pathlib import Path
+import logging
+
+logger = logging.getLogger(__name__)
 
 DB_PATH = Path(__file__).parent / "trading.db"
 
+
+def retry_on_locked(max_retries=3, delay=0.5):
+    """Decorator to retry database operations on lock errors.
+    
+    SQLite는 동시 쓰기가 불가능하여 'database is locked' 오류 발생 가능.
+    이 데코레이터는 자동으로 재시도하여 일시적인 락 문제를 해결함.
+    """
+    def decorator(func):
+        @functools.wraps(func)
+        def wrapper(*args, **kwargs):
+            last_error = None
+            for attempt in range(max_retries):
+                try:
+                    return func(*args, **kwargs)
+                except sqlite3.OperationalError as e:
+                    if "locked" in str(e).lower():
+                        last_error = e
+                        logger.warning(f"[DB] Lock detected, retry {attempt+1}/{max_retries}...")
+                        time.sleep(delay * (attempt + 1))
+                    else:
+                        raise
+            logger.error(f"[DB] Max retries reached, operation failed: {last_error}")
+            raise last_error
+        return wrapper
+    return decorator
+
+
+def get_connection():
+    """Get database connection with WAL mode for better concurrency."""
+    conn = sqlite3.connect(DB_PATH, timeout=30)
+    conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA busy_timeout=30000")
+    return conn
+
+
 def init_db():
     """Initialize database with required tables"""
-    conn = sqlite3.connect(DB_PATH)
+    conn = get_connection()
     cursor = conn.cursor()
     
     # Trades table
@@ -368,7 +408,10 @@ def log_portfolio_history(
     cumulative_return_pct: float = 0,
     benchmark_value: float = None,
     benchmark_return_pct: float = 0,
-    holdings: list = None
+    holdings: list = None,
+    strategy_mode: str = None,
+    trading_mode: str = None,
+    graphrag_confidence: float = 0.0
 ):
     """
     Log daily portfolio snapshot for performance tracking.
@@ -408,8 +451,9 @@ def log_portfolio_history(
             INSERT INTO portfolio_history 
             (timestamp, date, total_value, cash_balance, invested_value,
              daily_return_pct, cumulative_return_pct, benchmark_value, 
-             benchmark_return_pct, mdd_pct, peak_value, holdings_json)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             benchmark_return_pct, mdd_pct, peak_value, holdings_json,
+             strategy_mode, trading_mode, graphrag_confidence)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(date) DO UPDATE SET
                 timestamp = excluded.timestamp,
                 total_value = excluded.total_value,
@@ -421,10 +465,14 @@ def log_portfolio_history(
                 benchmark_return_pct = excluded.benchmark_return_pct,
                 mdd_pct = excluded.mdd_pct,
                 peak_value = excluded.peak_value,
-                holdings_json = excluded.holdings_json
+                holdings_json = excluded.holdings_json,
+                strategy_mode = excluded.strategy_mode,
+                trading_mode = excluded.trading_mode,
+                graphrag_confidence = excluded.graphrag_confidence
         """, (timestamp, date, total_value, cash_balance, invested_value,
               daily_return_pct, cumulative_return_pct, benchmark_value,
-              benchmark_return_pct, mdd_pct, peak_value, holdings_json))
+              benchmark_return_pct, mdd_pct, peak_value, holdings_json,
+              strategy_mode, trading_mode, graphrag_confidence))
         
         conn.commit()
         logger.info(f"[DB] Portfolio history saved: date={date}, total=${total_value:.2f}, return={cumulative_return_pct:.2f}%, mdd={mdd_pct:.2f}%")
