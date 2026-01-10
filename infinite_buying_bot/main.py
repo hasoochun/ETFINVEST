@@ -93,6 +93,8 @@ def start_telegram_bot(bot_controller, config):
 def main():
     global trade_counter, entry_value, max_drawdown
     
+    last_snapshot_time = datetime.now() - timedelta(minutes=5)  # Force initial log
+    
     logger.info("Initializing Infinite Buying Bot...")
     
     try:
@@ -128,20 +130,30 @@ def main():
     
     notifier.send("Bot Started. Waiting for user to start trading via Telegram...")
     
+    # [FIX] Explicitly set status to RUNNING
+    bot_controller.status_manager.set_status("running")
+    bot_controller.status_manager.update_logic("Started", "Bot is running and waiting for command")
+    
     while True:
         try:
+            # [FIX] Update Heartbeat
+            bot_controller.status_manager.update_heartbeat()
+
             # 0. Sync Config (Control Mechanism)
             bot_controller.sync_with_config()
 
             # 1. Check if trading is enabled
             if not bot_controller.is_running:
                 logger.info("Trading not started. Waiting for user command...")
+                bot_controller.status_manager.update_logic("Paused", "Trading disabled in config")
                 time.sleep(5)
                 continue
             
             # 2. Check Market Status
             if not scheduler.is_market_open():
                 logger.info("Market is closed. Sleeping...")
+                # [FIX] Update Logic status
+                bot_controller.status_manager.update_logic("Sleeping", "Market is Closed", "MARKET CLOSED")
                 time.sleep(60)
                 continue
 
@@ -160,8 +172,16 @@ def main():
             # Log holdings to database for dashboard
             try:
                 all_holdings = trader.get_all_holdings()
-                from infinite_buying_bot.dashboard.database import log_holdings
+                from infinite_buying_bot.dashboard.database import log_holdings, log_holdings_history
                 log_holdings(all_holdings)
+                
+                # Phase E: Log 5-minute snapshot
+                now = datetime.now()
+                if (now - last_snapshot_time).total_seconds() >= 300:  # 300 seconds = 5 minutes
+                    strategy_mode = getattr(bot_controller, 'strategy_mode', 'neutral')
+                    log_holdings_history(all_holdings, strategy_mode)
+                    last_snapshot_time = now
+                    logger.info("[Snapshot] Saved 5-minute holdings history")
             except Exception as e:
                 logger.error(f"Failed to log holdings: {e}")
             
@@ -210,7 +230,7 @@ def main():
             
             # Get trading mode from config
             trading_mode = getattr(bot_controller, 'trading_mode', 'gradual')
-            gradual_interval = getattr(bot_controller, 'gradual_interval', 5)
+            gradual_interval = getattr(bot_controller, 'gradual_interval', 5)  # Phase E: Default to 5 minutes
             
             # Check interval for gradual mode
             force_buy = False
