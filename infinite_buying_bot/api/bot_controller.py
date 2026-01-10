@@ -19,6 +19,9 @@ def get_kst_now():
 
 logger = logging.getLogger(__name__)
 
+import os
+from infinite_buying_bot.utils.bot_status_manager import BotStatusManager
+
 class BotController:
     def __init__(self):
         self.is_running = False
@@ -37,7 +40,10 @@ class BotController:
         self.last_dip_buy_time = None
         self.entry_allowed = True
         self.accel_interval_minutes = 5  # NEW: 5-minute interval for accelerated test
-        self.status_manager = None
+        
+        # Initialize Status Manager
+        root_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        self.status_manager = BotStatusManager(root_path)
         
         # NEW: Trading Mode Settings (for S-T Exchange / Gradual)
         self.trading_mode = "gradual"  # gradual, st-exchange, scheduled-single
@@ -59,6 +65,10 @@ class BotController:
         
         # Load from config file on init
         self._sync_from_config()
+
+        # [NEW] Holdings history timer
+        self.last_holdings_log_time = None
+
         
     def set_status_manager(self, manager):
         self.status_manager = manager
@@ -72,11 +82,16 @@ class BotController:
         if not self.is_running:
             if self.status_manager:
                 self.status_manager.update_logic("Paused", "Bot stopped by user command.")
+                self.status_manager.update_heartbeat()  # Keep heartbeat alive even when paused
             return
 
         try:
             # [NEW] Sync config every cycle to pick up UI changes
             self._sync_from_config()
+
+            # [FIX] Update heartbeat
+            if self.status_manager:
+                self.status_manager.update_heartbeat()
             
             # 1. Update Market Data
             current_price = self.trader.get_price(self.trading_symbol)
@@ -92,7 +107,11 @@ class BotController:
                 log_holdings(all_holdings)
                 
                 # [NEW] Log holdings history for 5-minute interval tracking
-                log_holdings_history(all_holdings, strategy_mode=self.strategy_mode)
+                now_kst = get_kst_now()
+                if self.last_holdings_log_time is None or (now_kst - self.last_holdings_log_time).total_seconds() >= 300:
+                    log_holdings_history(all_holdings, strategy_mode=self.strategy_mode)
+                    self.last_holdings_log_time = now_kst
+                    logger.info("[Snapshot] Saved 5-minute holdings history (KST)")
                 
                 # [NEW] Save portfolio history snapshot every 30 minutes
                 self._maybe_save_portfolio_snapshot(all_holdings, cash)
