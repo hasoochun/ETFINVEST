@@ -149,8 +149,25 @@ def main():
                 time.sleep(5)
                 continue
             
+            # 1.5 Check S-T Exchange Schedule (Allow Pre-market Execution)
+            is_st_scheduled_now = False
+            trading_mode = getattr(bot_controller, 'trading_mode', 'gradual')
+            
+            if trading_mode == 'st-exchange':
+                daily_time = getattr(bot_controller, 'daily_time', '22:00')
+                now = datetime.now()
+                try:
+                    target_hour, target_minute = map(int, daily_time.split(':'))
+                    if now.hour == target_hour and now.minute == target_minute:
+                        # Check if already executed today
+                        if not hasattr(bot_controller, 'last_st_exchange_date') or bot_controller.last_st_exchange_date != now.date(): 
+                            is_st_scheduled_now = True
+                            logger.info(f"[S-T EXCHANGE] Pre-market execution allowed for scheduled time: {daily_time}")
+                except ValueError:
+                    logger.error(f"Invalid daily_time format: {daily_time}")
+
             # 2. Check Market Status
-            if not scheduler.is_market_open():
+            if not scheduler.is_market_open() and not is_st_scheduled_now:
                 logger.info("Market is closed. Sleeping...")
                 # [FIX] Update Logic status
                 bot_controller.status_manager.update_logic("Sleeping", "Market is Closed", "MARKET CLOSED")
