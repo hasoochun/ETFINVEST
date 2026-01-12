@@ -5,6 +5,7 @@ import logging
 import yaml
 import asyncio
 from datetime import datetime, timedelta
+import pytz
 from threading import Thread
 from dotenv import load_dotenv
 
@@ -155,14 +156,17 @@ def main():
             
             if trading_mode == 'st-exchange':
                 daily_time = getattr(bot_controller, 'daily_time', '22:00')
-                now = datetime.now()
+                # [FIX] Use KST for time comparison (Server is UTC)
+                tz_kst = pytz.timezone('Asia/Seoul')
+                now_kst = datetime.now(tz_kst)
+                
                 try:
                     target_hour, target_minute = map(int, daily_time.split(':'))
-                    if now.hour == target_hour and now.minute == target_minute:
+                    if now_kst.hour == target_hour and now_kst.minute == target_minute:
                         # Check if already executed today
-                        if not hasattr(bot_controller, 'last_st_exchange_date') or bot_controller.last_st_exchange_date != now.date(): 
+                        if not hasattr(bot_controller, 'last_st_exchange_date') or bot_controller.last_st_exchange_date != now_kst.date(): 
                             is_st_scheduled_now = True
-                            logger.info(f"[S-T EXCHANGE] Pre-market execution allowed for scheduled time: {daily_time}")
+                            logger.info(f"[S-T EXCHANGE] Pre-market execution allowed for scheduled time: {daily_time} KST")
                 except ValueError:
                     logger.error(f"Invalid daily_time format: {daily_time}")
 
