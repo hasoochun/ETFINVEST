@@ -124,6 +124,15 @@ def main():
     bot_controller.set_trader(trader)
     bot_controller.set_notifier(notifier)
     
+    # [FIX] Add PortfolioManager Initialization (Critical for Gradual Mode)
+    from infinite_buying_bot.core.portfolio_manager import PortfolioManager
+    portfolio_manager = PortfolioManager(initial_capital=0.0)
+    cash, _, _ = trader.get_balance()
+    if cash > 0:
+        portfolio_manager.update_cash(cash)
+    bot_controller.portfolio_manager = portfolio_manager
+    logger.info(f"[FIX] PortfolioManager connected with cash: ${cash:.2f}")
+    
     # Start Telegram bot in separate thread
     telegram_thread = Thread(target=start_telegram_bot, args=(bot_controller, config), daemon=True)
     telegram_thread.start()
