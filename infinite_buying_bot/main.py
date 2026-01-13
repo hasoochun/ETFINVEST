@@ -12,8 +12,25 @@ from dotenv import load_dotenv
 # Load .env file
 load_dotenv(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".env"))
 
+# ============================================================
+# [PHASE 2] Environment-based Configuration
+# ============================================================
+# ENVIRONMENT: "local" (default) or "aws"
+ENVIRONMENT = os.getenv("ENVIRONMENT", "local").lower()
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+# Environment-specific settings
+if ENVIRONMENT == "aws":
+    CONFIG_PATH = os.path.join(PROJECT_ROOT, "kis_devlp.yaml")
+    LOG_LEVEL = logging.INFO
+    LOG_FORMAT = '%(asctime)s - %(levelname)s - %(message)s'
+else:  # local (default)
+    CONFIG_PATH = os.path.join(os.path.dirname(__file__), "config", "kis_devlp.yaml")
+    LOG_LEVEL = logging.DEBUG
+    LOG_FORMAT = '%(asctime)s - %(levelname)s - [%(filename)s:%(lineno)d] %(message)s'
+
 # Add project root to path to allow imports
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.append(PROJECT_ROOT)
 
 from infinite_buying_bot.utils.notifier import Notifier
 from infinite_buying_bot.utils.scheduler import MarketScheduler
@@ -27,18 +44,19 @@ from infinite_buying_bot.dashboard.database import set_initial_capital
 log_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'logs')
 os.makedirs(log_dir, exist_ok=True)
 logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s',
+    level=LOG_LEVEL,
+    format=LOG_FORMAT,
     handlers=[
         logging.FileHandler(os.path.join(log_dir, 'bot.log')),
         logging.StreamHandler()
     ]
 )
 logger = logging.getLogger(__name__)
+logger.info(f"[ENV] Running in {ENVIRONMENT.upper()} mode, config: {CONFIG_PATH}")
 
 def load_config():
-    config_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'config', 'kis_devlp.yaml')
-    with open(config_path, 'r', encoding='utf-8') as f:
+    """Load config from environment-specific path."""
+    with open(CONFIG_PATH, 'r', encoding='utf-8') as f:
         config = yaml.safe_load(f)
     
     # Override Notification Settings from Env
