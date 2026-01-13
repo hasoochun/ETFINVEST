@@ -104,7 +104,7 @@ def main():
 
     notifier = Notifier(config)
     scheduler = MarketScheduler()
-    strategy = InfiniteBuyingStrategy(config)
+    # Note: Strategy logic now fully handled by bot_controller
     
     try:
         trader = Trader(config, notifier)
