@@ -133,7 +133,7 @@ class Trader:
             self.notifier.send(f"[ORDER REJECTED] {target}")
             return False
 
-    def sell(self, qty, symbol=None, reason=None):
+    def sell(self, qty, symbol=None, reason=None, fallback_price=None):
         """
         Sell a specific quantity of shares.
         
@@ -141,12 +141,18 @@ class Trader:
             qty: Number of shares to sell
             symbol: Stock symbol (default: self.symbol)
             reason: Reason for selling (for logging)
+            fallback_price: Price to use if API fails (e.g., from holdings data)
         
         Returns:
             bool: True if order was sent successfully
         """
         target = symbol or self.symbol
         price = self.get_price(target)
+        
+        # Use fallback price if API price fetch failed
+        if price <= 0 and fallback_price and fallback_price > 0:
+            logger.warning(f"[SELL] Using fallback price ${fallback_price} for {target} (API returned {price})")
+            price = fallback_price
         
         if price <= 0:
             self.notifier.send(f"❌ Sell Failed: Invalid Price for {target}")

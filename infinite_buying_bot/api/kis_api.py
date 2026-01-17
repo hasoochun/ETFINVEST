@@ -7,10 +7,40 @@ import json
 import logging
 import pandas as pd
 import time
+import socket
+from functools import wraps
 
 logger = logging.getLogger(__name__)
 
+
+def retry_on_network_error(max_retries=3, initial_delay=1):
+    """Decorator for automatic retry with exponential backoff on network errors"""
+    def decorator(func):
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            delay = initial_delay
+            last_exception = None
+            for attempt in range(1, max_retries + 1):
+                try:
+                    return func(*args, **kwargs)
+                except (requests.exceptions.ConnectionError, 
+                        requests.exceptions.Timeout,
+                        requests.exceptions.HTTPError,  # Includes 500 Server Errors
+                        socket.gaierror) as e:
+                    last_exception = e
+                    if attempt == max_retries:
+                        logger.error(f"[KIS API] {func.__name__}: Max retries ({max_retries}) exceeded: {e}")
+                        raise
+                    logger.warning(f"[KIS API] {func.__name__}: Attempt {attempt} failed, retrying in {delay}s...")
+                    time.sleep(delay)
+                    delay *= 2  # Exponential backoff
+            return None
+        return wrapper
+    return decorator
+
+
 # Common Headers
+
 def _get_headers(trenv, tr_id):
     return {
         "content-type": "application/json",
@@ -20,6 +50,7 @@ def _get_headers(trenv, tr_id):
         "tr_id": tr_id
     }
 
+@retry_on_network_error(max_retries=3, initial_delay=1)
 def get_current_price(trenv, exchange, symbol, env_dv='prod'):
     """Get Price - Returns float"""
     # KIS API: 주식현재가 시세 (HHDFS76200200)
@@ -65,6 +96,7 @@ def price(auth, excd, symb, env_dv='prod'):
         return pd.DataFrame([{'last': p}])
     return pd.DataFrame()
 
+@retry_on_network_error(max_retries=3, initial_delay=1)
 def inquire_psamount(cano, acnt_prdt_cd, ovrs_excg_cd, ovrs_ord_unpr, item_cd, env_dv='prod'):
     """Check Buying Power"""
     from infinite_buying_bot.api import kis_auth
@@ -96,6 +128,7 @@ def inquire_psamount(cano, acnt_prdt_cd, ovrs_excg_cd, ovrs_ord_unpr, item_cd, e
         logger.error(f"BuyingPower API Exception: {e}")
         return None
 
+@retry_on_network_error(max_retries=3, initial_delay=1)
 def inquire_balance(cano, acnt_prdt_cd, ovrs_excg_cd, tr_crcy_cd, env_dv='prod'):
     """Check Holdings"""
     from infinite_buying_bot.api import kis_auth
@@ -129,6 +162,7 @@ def inquire_balance(cano, acnt_prdt_cd, ovrs_excg_cd, tr_crcy_cd, env_dv='prod')
         logger.error(f"Balance API Exception: {e}")
         return pd.DataFrame(), pd.DataFrame()
 
+@retry_on_network_error(max_retries=2, initial_delay=2)
 def order(order_dv, cano, acnt_prdt_cd, ovrs_excg_cd, pdno, ord_qty, ovrs_ord_unpr, ord_dvsn, env_dv='prod'):
     """Execute Order"""
     from infinite_buying_bot.api import kis_auth

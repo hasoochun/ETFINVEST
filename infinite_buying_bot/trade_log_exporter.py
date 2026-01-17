@@ -87,7 +87,7 @@ def get_portfolio_summary():
         
         cursor.execute("""
             SELECT symbol, quantity, avg_price, current_price
-            FROM positions
+            FROM holdings
             WHERE quantity > 0
         """)
         

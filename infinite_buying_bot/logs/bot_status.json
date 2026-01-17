@@ -1,0 +1,26 @@
+{
+  "system": {
+    "status": "running",
+    "pid": 15112,
+    "start_time": "2026-01-11T17:53:36.546512",
+    "last_heartbeat": "2026-01-11T20:10:53.276122",
+    "heartbeat_ago": 0
+  },
+  "config": {
+    "mode": "unknown",
+    "strategy": "unknown",
+    "interval": 0
+  },
+  "schedule": {
+    "last_run": null,
+    "next_run": null,
+    "time_remaining": null,
+    "message": "Initializing..."
+  },
+  "logic": {
+    "current_action": "Sleeping",
+    "market_status": "MARKET CLOSED",
+    "description": "Market is Closed"
+  },
+  "last_updated": "2026-01-11T20:10:53.281229"
+}

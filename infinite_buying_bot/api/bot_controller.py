@@ -549,8 +549,8 @@ class BotController:
                 logger.info("[S-T EXCHANGE] Quantities too small to execute")
                 return
             
-            # 9. Execute Sell SHV
-            sell_success = self.trader.sell(shv_to_sell, 'SHV', reason=f"S-T Exchange → {selected_etf}")
+            # 9. Execute Sell SHV (pass fallback_price in case API fails during sell)
+            sell_success = self.trader.sell(shv_to_sell, 'SHV', reason=f"S-T Exchange → {selected_etf}", fallback_price=shv_price)
             
             if sell_success:
                 logger.info(f"[S-T EXCHANGE] Sold {shv_to_sell} SHV @ ${shv_price:.2f}")

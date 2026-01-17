@@ -39,7 +39,14 @@ class RebalancingEngine:
             self.tqqq_target_profit = self.accel_profit_target
             logger.info(f"⚡ Accelerated Test Mode: {self.accel_interval_minutes}min, {self.accel_fixed_quantity} share, {self.accel_profit_target*100}% target")
         else:
-            self.tqqq_target_profit = 0.10  # +10% profit target
+            # Read from runtime_config (dynamic, set by AI)
+            self.tqqq_target_profit = self.config.get('profit_target', 0.10)  # Default 10%
+        
+        # Dynamic symbols from runtime_config (set by AI strategy)
+        self.profit_reinvest_symbol = self.config.get('profit_reinvest_symbol', 'JEPI')
+        self.interest_reinvest_symbol = self.config.get('interest_reinvest_symbol', 'JEPI')
+        
+        logger.info(f"🎯 Profit target: +{self.tqqq_target_profit*100:.0f}% → Reinvest to {self.profit_reinvest_symbol}")
         
         # 40/80 split strategy (using SHV as buffer)
         # - Price < Avg: SHV / 40 (aggressive)
@@ -104,10 +111,10 @@ class RebalancingEngine:
                 'action': 'profit_taking',
                 'sell_symbol': 'TQQQ',
                 'sell_quantity': tqqq_pos['quantity'],
-                'buy_symbol': 'JEPI',
+                'buy_symbol': self.profit_reinvest_symbol,  # Dynamic from AI strategy
                 'profit_amount': profit_amount,
                 'profit_pct': profit_pct * 100,
-                'reason': f'Profit target +{self.tqqq_target_profit*100:.0f}% reached'
+                'reason': f'Profit target +{self.tqqq_target_profit*100:.0f}% reached, reinvest to {self.profit_reinvest_symbol}'
             }
         
         return None
@@ -162,17 +169,54 @@ class RebalancingEngine:
         tqqq_pos = self.portfolio.positions['TQQQ']
         shv_pos = self.portfolio.positions['SHV']
         
-        # Need SHV to buy TQQQ (unless in accel_test mode - uses cash directly)
-        if shv_pos['quantity'] == 0 and not self.accel_test_enabled:
+        # === ROTATION PRIORITY: Find funding source (SHV → JEPI → MAGS) ===
+        # Load rotation_priority from bot_controller config or use default
+        rotation_priority = ['SHV', 'JEPI', 'MAGS']
+        if self.bot_controller and hasattr(self.bot_controller, 'runtime_config'):
+            config_priority = self.bot_controller.runtime_config.get('rotation_priority', [])
+            if config_priority:
+                rotation_priority = config_priority
+        
+        # Find the best funding source based on priority and profitability
+        funding_source = None
+        funding_value = 0
+        min_allocation = {'SHV': 0.0, 'JEPI': 0.20, 'MAGS': 0.20}  # Min allocation to preserve
+        
+        for symbol in rotation_priority:
+            pos = self.portfolio.positions.get(symbol)
+            if not pos or pos['quantity'] == 0:
+                continue
+            
+            # Check if asset is in profit (for JEPI/MAGS, never sell at loss)
+            if symbol != 'SHV':
+                avg_price = pos.get('avg_price', 0)
+                current_price = pos.get('current_price', 0)
+                if avg_price > 0 and current_price < avg_price:
+                    logger.debug(f"⏭️ Skipping {symbol}: In loss (${current_price:.2f} < ${avg_price:.2f})")
+                    continue
+                
+                # Check minimum allocation preservation
+                total_value = self.portfolio.get_total_value()
+                if total_value > 0:
+                    current_allocation = (pos['quantity'] * pos['current_price']) / total_value
+                    if current_allocation <= min_allocation.get(symbol, 0):
+                        logger.debug(f"⏭️ Skipping {symbol}: At minimum allocation ({current_allocation*100:.1f}%)")
+                        continue
+            
+            # Found a valid funding source
+            funding_source = symbol
+            funding_value = pos['quantity'] * pos['current_price']
+            logger.info(f"💰 Funding source selected: {symbol} (${funding_value:,.0f})")
+            break
+        
+        # No funding source available
+        if not funding_source:
+            logger.debug("❌ No funding source available (all depleted or in loss)")
             return None
         
         current_price = tqqq_pos['current_price']
         avg_price = tqqq_pos['avg_price']
         
-        # Calculate SHV total value
-        shv_value = shv_pos['quantity'] * shv_pos['current_price']
-        
-        # Determine split count based on price vs average
         # Determine split count based on price vs average AND Strategy Mode
         # Default (Neutral): 40 (Below Avg) / 80 (Above Avg)
         base_aggressive = 40
@@ -206,19 +250,19 @@ class RebalancingEngine:
             split_count = base_aggressive
             reason = "No average price yet"
         
-        # Calculate buy amount from SHV (all modes use same strategy)
-        buy_amount = shv_value / split_count
+        # Calculate buy amount from funding source
+        buy_amount = funding_value / split_count
         # Floor to avoid decimal issues in trading
         buy_amount = int(buy_amount)
         # Minimum buy threshold ($100)
         if buy_amount < 100:
             return None
         
-        logger.info(f"📉 TQQQ buy signal: {reason}, buying ${buy_amount:,.0f}")
+        logger.info(f"📉 TQQQ buy signal: {reason}, selling {funding_source} ${buy_amount:,.0f}")
         
         return {
             'action': 'dip_buying',
-            'sell_symbol': 'SHV' if shv_pos['quantity'] > 0 else None,
+            'sell_symbol': funding_source,
             'sell_amount': buy_amount,
             'buy_symbol': 'TQQQ',
             'split_count': split_count,
@@ -241,14 +285,14 @@ class RebalancingEngine:
         monthly_interest = int(monthly_interest)
         
         if monthly_interest > 100:  # Minimum $100
-            logger.info(f"💰 SHV interest reinvest: {monthly_interest:,.0f} KRW → JEPI")
+            logger.info(f"💰 SHV interest reinvest: {monthly_interest:,.0f} KRW → {self.interest_reinvest_symbol}")
             
             return {
                 'action': 'interest_reinvest',
                 'source': 'SHV_interest',
-                'buy_symbol': 'JEPI',
+                'buy_symbol': self.interest_reinvest_symbol,  # Dynamic from AI strategy
                 'amount': monthly_interest,
-                'reason': 'SHV interest reinvestment'
+                'reason': f'SHV interest reinvestment to {self.interest_reinvest_symbol}'
             }
         
         return None
