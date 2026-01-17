@@ -345,8 +345,8 @@ class BotController:
         # 오늘 목표 시간
         target_dt = now.replace(hour=target_hour, minute=target_minute, second=0, microsecond=0)
         
-        # 이미 지났으면 내일로
-        if target_dt <= now:
+        # 이미 지났으면 내일로 (같은 시간이면 오늘 실행)
+        if target_dt < now:  # Fixed: was <= which caused same-minute to skip to next day
             target_dt += timedelta(days=1)
         
         # 토요일(5) 또는 일요일(6)이면 월요일로 이동
