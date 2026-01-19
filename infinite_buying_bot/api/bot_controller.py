@@ -398,12 +398,20 @@ class BotController:
                     holdings_dict[etf]['current_price'] = price
                     logger.debug(f"[PREVIEW] Updated {etf} price to ${price:.2f}")
             
-            # 2. Check SHV holdings
+            # 2. Check SHV holdings AND Cash
             shv_holding = holdings_dict.get('SHV', {})
             shv_qty = shv_holding.get('qty', 0)
             
-            if shv_qty <= 0:
-                logger.debug("[PREVIEW] No SHV holdings available")
+            # Fetch cash
+            cash, _, _ = self.trader.get_balance()
+            
+            # Calculate Total Liquidity (SHV + Cash)
+            shv_value = shv_qty * shv_holding.get('current_price', 0)
+            total_liquidity = shv_value + cash
+            
+            if total_liquidity <= 10: # Minimum $10 to do anything
+                logger.debug("[PREVIEW] No liquidity (SHV/Cash) available")
+                # Return dummy queue to show empty
                 return (None, 0.0, 0)
             
             # 3. Calculate total portfolio value
@@ -444,8 +452,10 @@ class BotController:
                     max_deficit = deficit
                     selected_etf = etf
             
-            logger.debug(f"[PREVIEW] Next ETF: {selected_etf}, Deficit: ${max_deficit:.2f}, SHV: {shv_qty}")
-            return (selected_etf, max_deficit, shv_qty)
+            logger.debug(f"[PREVIEW] Next ETF: {selected_etf}, Deficit: ${max_deficit:.2f}, SHV: {shv_qty}, Cash: ${cash:.2f}")
+            # Use 99999 as shv_qty signal if we have cash but no SHV, so UI says "Liquidity OK" instead of "SHV missing"
+            display_qty = shv_qty if shv_qty > 0 else (99999 if cash > 50 else 0)
+            return (selected_etf, max_deficit, display_qty)
             
         except Exception as e:
             logger.warning(f"[PREVIEW] Failed to calculate preview: {e}")
@@ -484,10 +494,17 @@ class BotController:
             shv_holding = holdings_dict.get('SHV', {})
             shv_qty = shv_holding.get('qty', 0)
             
-            if shv_qty <= 0:
-                logger.info("[S-T EXCHANGE] No SHV holdings to exchange")
+            # [FIX] Get Cash as well
+            cash, _, _ = self.trader.get_balance()
+            shv_price = self.trader.get_price('SHV') or 110
+            shv_value = shv_qty * shv_price
+            
+            total_liquidity = shv_value + cash
+            
+            if total_liquidity < 50:
+                logger.info(f"[S-T EXCHANGE] Insufficient liquidity (SHV ${shv_value:.0f} + Cash ${cash:.0f})")
                 if self.status_manager:
-                    self.status_manager.update_logic("Exchange Skipped", "No SHV holdings available")
+                    self.status_manager.update_logic("Exchange Skipped", "Low Liquidity")
                 return
             
             # 2. Get current prices
@@ -538,52 +555,76 @@ class BotController:
                 sell_pct = 0.05  # 5%
             
             # 8. Calculate quantities
-            shv_to_sell = max(1, int(shv_qty * sell_pct))
-            sell_amount = shv_to_sell * shv_price
-            etf_to_buy = int(sell_amount / etf_price)
+            # Use Cash FIRST, then Sell SHV if needed
+            
+            # Desired buy amount: Strategy % of Total Liquidity??
+            # Or just Strategy % of SHV?
+            # User wants to deploy CASH.
+            # Let's say we want to deploy 5% of Total Liquidity?
+            # Or if we have Cash, use ALL Cash up to the deficit?
+            
+            # Policy: Use Strategy % of Total Liquidity as the "Budget"
+            budget = total_liquidity * sell_pct
+            
+            # If we have excess cash, we can be more aggressive? 
+            # Let's stick to the budget to be gradual.
+            
+            # Determine funding source
+            use_cash = min(budget, cash)
+            sell_shv_val = max(0, budget - use_cash)
+            
+            shv_to_sell = 0
+            if sell_shv_val > 0:
+                shv_to_sell = int(sell_shv_val / shv_price)
+            
+            # Buy amount is budget (approx)
+            buy_budget = use_cash + (shv_to_sell * shv_price)
+            etf_to_buy = int(buy_budget / etf_price)
             
             logger.info(f"[S-T EXCHANGE] Priority: {selected_etf} (deficit: ${max_deficit:.2f})")
-            logger.info(f"[S-T EXCHANGE] Strategy: {strategy_mode}, Sell: {shv_to_sell} SHV (${sell_amount:.2f}) → Buy: {etf_to_buy} {selected_etf}")
+            logger.info(f"[S-T EXCHANGE] Budget: ${buy_budget:.2f} (Cash: ${use_cash:.2f}, SHV: {shv_to_sell} shares)")
             
-            if shv_to_sell <= 0 or etf_to_buy <= 0:
+            if etf_to_buy <= 0:
                 logger.info("[S-T EXCHANGE] Quantities too small to execute")
                 return
             
-            # 9. Execute Sell SHV (pass fallback_price in case API fails during sell)
-            sell_success = self.trader.sell(shv_to_sell, 'SHV', reason=f"S-T Exchange → {selected_etf}", fallback_price=shv_price)
+            # 9. Execute Sell SHV (if needed)
+            proceeds = 0
+            if shv_to_sell > 0:
+                sell_success = self.trader.sell(shv_to_sell, 'SHV', reason=f"S-T Exchange → {selected_etf}", fallback_price=shv_price)
+                if sell_success:
+                    logger.info(f"[S-T EXCHANGE] Sold {shv_to_sell} SHV")
+                    proceeds = shv_to_sell * shv_price # approx
+                else:
+                    logger.error("[S-T EXCHANGE] SHV sell failed")
+                    return # Stop if sell failed (don't use cash if main mechanism failed?)
+                    # Actually if sell failed but we have cash, should we proceed? 
+                    # Safer to stop/retry next time.
             
-            if sell_success:
-                logger.info(f"[S-T EXCHANGE] Sold {shv_to_sell} SHV @ ${shv_price:.2f}")
-                
-                # 10. Execute Buy selected ETF with proceeds
-                buy_amount = sell_amount * 1.01  # 1% buffer for limit order
+            # 10. Execute Buy selected ETF
+            # Amount = Cash Used + Proceeds
+            total_buy_funds = use_cash + proceeds
+            
+            if total_buy_funds > 10:
+                buy_amount = total_buy_funds * 1.01  # 1% buffer
                 buy_success = self.trader.buy(buy_amount, selected_etf, reason=f"S-T Exchange ({strategy_mode})")
                 
                 if buy_success:
-                    logger.info(f"[S-T EXCHANGE] Bought ~{etf_to_buy} {selected_etf} @ ${etf_price:.2f}")
-                    
-                    # Log to database
-                    try:
-                        from infinite_buying_bot.dashboard.database import log_trade
-                        log_trade("sell", "SHV", shv_to_sell, shv_price, reason=f"S-T Exchange → {selected_etf}")
-                        log_trade("buy", selected_etf, etf_to_buy, etf_price, reason=f"S-T Exchange ({strategy_mode})")
-                    except Exception as e:
-                        logger.warning(f"[S-T EXCHANGE] DB log failed: {e}")
+                    logger.info(f"[S-T EXCHANGE] Bought ~{etf_to_buy} {selected_etf}")
                     
                     if self.status_manager:
+                        source_msg = f"Cash+SHV" if shv_to_sell > 0 else "Cash"
                         self.status_manager.update_logic(
                             "Exchange Complete", 
-                            f"SHV → {selected_etf} ({strategy_mode})",
+                            f"{source_msg} → {selected_etf}",
                             "ORDER FILLED"
                         )
                 else:
-                    logger.error(f"[S-T EXCHANGE] {selected_etf} buy failed after SHV sell")
+                    logger.error(f"[S-T EXCHANGE] {selected_etf} buy failed")
                     if self.status_manager:
-                        self.status_manager.update_logic("Partial Exchange", f"SHV sold but {selected_etf} buy failed!")
+                        self.status_manager.update_logic("Partial Fail", f"Funds ready but buy failed")
             else:
-                logger.error("[S-T EXCHANGE] SHV sell failed")
-                if self.status_manager:
-                    self.status_manager.update_logic("Exchange Failed", "SHV sell order rejected")
+                logger.info("Funds too small to buy")
                     
         except Exception as e:
             logger.error(f"[S-T EXCHANGE] Error: {e}")
