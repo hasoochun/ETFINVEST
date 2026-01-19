@@ -1,7 +1,7 @@
 {
   "trading_mode": "st-exchange",
   "strategy_mode": "neutral",
-  "daily_time": "22:30",
+  "daily_time": "23:30",
   "target_portfolio": {
     "TQQQ": 0.2,
     "SHV": 0.5,
