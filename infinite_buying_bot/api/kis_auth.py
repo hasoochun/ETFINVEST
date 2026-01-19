@@ -127,11 +127,21 @@ def _issue_token(app_key, app_secret, base_url):
         "appsecret": app_secret
     }
     
-    resp = requests.post(url, headers=headers, json=body)
-    resp.raise_for_status()
-    data = resp.json()
-    
-    access_token = data['access_token']
+    # Retry up to 3 times
+    for attempt in range(3):
+        try:
+            resp = requests.post(url, headers=headers, json=body, timeout=30)
+            resp.raise_for_status()
+            data = resp.json()
+            access_token = data['access_token']
+            break
+        except (requests.exceptions.RequestException, ValueError) as e:
+            if attempt == 2:
+                logger.error(f"[Auth] Failed to issue token after 3 retries: {e}")
+                raise
+            logger.warning(f"[Auth] Token issuance failed (attempt {attempt+1}/3), retrying... Error: {e}")
+            import time
+            time.sleep(2)
     
     # Save (valid for ~24h, save for 23h)
     expired_at = datetime.now() + timedelta(hours=23)
