@@ -64,6 +64,7 @@ class Trader:
                         break
         except Exception as e:
             logger.error(f"Balance(Cash) Error: {e}")
+            cash = None # Signal error
 
         try:
             # 2. Holdings
@@ -80,6 +81,7 @@ class Trader:
                     avg = float(row['pchs_avg_pric'].iloc[0])
         except Exception as e:
             logger.error(f"Balance(Holdings) Error: {e}")
+            qty = None # Signal error
             
         return cash, qty, avg
 
@@ -223,6 +225,8 @@ class Trader:
                             })
                             logger.info(f"[HOLDINGS] {symbol}: {qty}주 @ ${r.get('pchs_avg_pric')} ({exchange})")
             except Exception as e:
-                logger.warning(f"[HOLDINGS] Failed to query {exchange}: {e}")
+                logger.error(f"[HOLDINGS] Failed to query {exchange}: {e}")
+                # If API fails completely, return None to prevent '0 holdings' misunderstanding
+                return None
         
         return out

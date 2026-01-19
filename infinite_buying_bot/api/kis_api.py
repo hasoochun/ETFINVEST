@@ -64,23 +64,20 @@ def get_current_price(trenv, exchange, symbol, env_dv='prod'):
         "SYMB": symbol
     }
     
-    try:
-        res = requests.get(url, headers=headers, params=params)
-        res.raise_for_status()
-        data = res.json()
-        
-        if data['rt_cd'] != '0':
-            logger.error(f"Price API Failed: {data['msg1']}")
-            return 0.0
-            
-        price_str = data['output'].get('last', '')
-        if not price_str:
-            logger.warning(f"Price API returned empty value for {symbol}")
-            return 0.0
-        return float(price_str)
-    except Exception as e:
-        logger.error(f"Price API Exception: {e}")
+    # try-except removed to allow decorator to handle retries
+    res = requests.get(url, headers=headers, params=params)
+    res.raise_for_status()
+    data = res.json()
+    
+    if data['rt_cd'] != '0':
+        logger.error(f"Price API Failed: {data['msg1']}")
         return 0.0
+        
+    price_str = data['output'].get('last', '')
+    if not price_str:
+        logger.warning(f"Price API returned empty value for {symbol}")
+        return 0.0
+    return float(price_str)
 
 # Alias for compatibility
 def price(auth, excd, symb, env_dv='prod'):
@@ -116,17 +113,14 @@ def inquire_psamount(cano, acnt_prdt_cd, ovrs_excg_cd, ovrs_ord_unpr, item_cd, e
         "ITEM_CD": item_cd
     }
     
-    try:
-        res = requests.get(url, headers=headers, params=params)
-        res.raise_for_status()
-        data = res.json()
-        if data['rt_cd'] != '0':
-            logger.error(f"BuyingPower API Failed: {data.get('msg1')}")
-            return None
-        return pd.DataFrame([data['output']])
-    except Exception as e:
-        logger.error(f"BuyingPower API Exception: {e}")
+    # try-except removed to allow decorator to handle retries
+    res = requests.get(url, headers=headers, params=params)
+    res.raise_for_status()
+    data = res.json()
+    if data['rt_cd'] != '0':
+        logger.error(f"BuyingPower API Failed: {data.get('msg1')}")
         return None
+    return pd.DataFrame([data['output']])
 
 @retry_on_network_error(max_retries=3, initial_delay=1)
 def inquire_balance(cano, acnt_prdt_cd, ovrs_excg_cd, tr_crcy_cd, env_dv='prod'):
@@ -149,18 +143,15 @@ def inquire_balance(cano, acnt_prdt_cd, ovrs_excg_cd, tr_crcy_cd, env_dv='prod')
         "CTX_AREA_NK200": ""
     }
     
-    try:
-        res = requests.get(url, headers=headers, params=params)
-        res.raise_for_status()
-        data = res.json()
-        if data['rt_cd'] != '0':
-            logger.error(f"Balance API Failed: {data.get('msg1')}")
-            return pd.DataFrame(), pd.DataFrame()
-            
-        return pd.DataFrame(data['output1']), pd.DataFrame([data['output2']])
-    except Exception as e:
-        logger.error(f"Balance API Exception: {e}")
+    # try-except removed to allow decorator to handle retries
+    res = requests.get(url, headers=headers, params=params)
+    res.raise_for_status()
+    data = res.json()
+    if data['rt_cd'] != '0':
+        logger.error(f"Balance API Failed: {data.get('msg1')}")
         return pd.DataFrame(), pd.DataFrame()
+        
+    return pd.DataFrame(data['output1']), pd.DataFrame([data['output2']])
 
 @retry_on_network_error(max_retries=2, initial_delay=2)
 def order(order_dv, cano, acnt_prdt_cd, ovrs_excg_cd, pdno, ord_qty, ovrs_ord_unpr, ord_dvsn, env_dv='prod'):
@@ -192,20 +183,17 @@ def order(order_dv, cano, acnt_prdt_cd, ovrs_excg_cd, pdno, ord_qty, ovrs_ord_un
         "ORD_SVR_DVSN_CD": "0"  # Required for real trading
     }
     
-    try:
-        logger.info(f"Sending Order: {json.dumps(body)}")
-        res = requests.post(url, headers=headers, json=body)
-        res.raise_for_status()
-        data = res.json()
-        
-        # Log full response for debugging
-        logger.info(f"Order Response: rt_cd={data.get('rt_cd')}, msg_cd={data.get('msg_cd')}, msg1={data.get('msg1')}")
-        
-        if data['rt_cd'] != '0':
-            logger.error(f"Order API Failed: {data.get('msg1')} (Code: {data.get('msg_cd')})")
-            return None
-            
-        return pd.DataFrame([data['output']])
-    except Exception as e:
-        logger.error(f"Order API Exception: {e}")
+    # try-except removed to allow decorator to handle retries
+    logger.info(f"Sending Order: {json.dumps(body)}")
+    res = requests.post(url, headers=headers, json=body)
+    res.raise_for_status()
+    data = res.json()
+    
+    # Log full response for debugging
+    logger.info(f"Order Response: rt_cd={data.get('rt_cd')}, msg_cd={data.get('msg_cd')}, msg1={data.get('msg1')}")
+    
+    if data['rt_cd'] != '0':
+        logger.error(f"Order API Failed: {data.get('msg1')} (Code: {data.get('msg_cd')})")
         return None
+        
+    return pd.DataFrame([data['output']])

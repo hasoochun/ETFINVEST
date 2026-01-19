@@ -97,6 +97,14 @@ class BotController:
             current_price = self.trader.get_price(self.trading_symbol)
             cash, qty, avg = self.trader.get_balance()
             
+            # [FIX] Check for API Failure
+            if cash is None:
+                logger.error("[CYCLE] API Failure detected (Balance is None)")
+                if self.status_manager:
+                    self.status_manager.update_logic("API Error", "Connection failed (500)", "ERROR")
+                return # Skip cycle
+            
+
             # [NEW] Log Holdings to DB for Report Page
             try:
                 from infinite_buying_bot.dashboard.database import log_holdings, log_holdings_history
@@ -373,6 +381,10 @@ class BotController:
         try:
             # 1. Get current holdings
             all_holdings = self.trader.get_all_holdings()
+            if all_holdings is None:
+                logger.warning("[PREVIEW] Holdings fetch failed")
+                return (None, 0.0, 0)
+            
             holdings_dict = {}
             for h in all_holdings:
                 symbol = h.get('symbol', '')
@@ -485,6 +497,14 @@ class BotController:
         try:
             # 1. Get current holdings
             all_holdings = self.trader.get_all_holdings()
+            if all_holdings is None:
+                logger.error("[S-T EXCHANGE] Failed to fetch holdings (API Error)")
+                if self.status_manager:
+                     self.status_manager.update_logic("Error", "API 500: Failed to fetch holdings", "ERROR")
+                if self.notifier:
+                     self.notifier.send("⚠️ [매매 실패] 잔고 조회 오류 (API 500)\n증권사 서버 응답 없음 (재시도 실패)")
+                return
+            
             holdings_dict = {}
             for h in all_holdings:
                 symbol = h.get('symbol', '')
