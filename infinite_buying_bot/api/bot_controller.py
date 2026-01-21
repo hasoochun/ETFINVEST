@@ -86,12 +86,16 @@ class BotController:
             return
 
         try:
+            # [NEW] 이전 거래 체결 확인 (옵션 C)
+            self._verify_last_trade()
+            
             # [NEW] Sync config every cycle to pick up UI changes
             self._sync_from_config()
 
             # [FIX] Update heartbeat
             if self.status_manager:
                 self.status_manager.update_heartbeat()
+            
             
             # 1. Update Market Data
             current_price = self.trader.get_price(self.trading_symbol)
@@ -256,13 +260,33 @@ class BotController:
                             if self.trader:
                                 current_price = self.trader.get_price(symbol)
                                 buy_price = current_price * 1.01  # 1% buffer
-                                self.trader.buy(buy_price, symbol)
+                                success = self.trader.buy(buy_price, symbol)
                                 logger.info(f"[SCHEDULED] Bought {qty} {symbol} @ ${current_price:.2f}")
                                 
-                                if self.status_manager:
-                                    self.status_manager.update_logic("Trade Success", f"Bought {qty} {symbol}", "ORDER FILLED")
+                                if success:
+                                    # [NEW] 예약매수 체결 예상 알림
+                                    if self.notifier:
+                                        self.notifier.send(f"✅ [{symbol} 예약매수 전송] {qty}주 @ ${current_price:.2f} 체결 예상")
+                                    
+                                    # [NEW] 최종 요약 알림
+                                    self._send_trade_summary(
+                                        mode='예약매매',
+                                        bought_symbol=symbol,
+                                        bought_qty=qty,
+                                        bought_price=current_price
+                                    )
+                                    
+                                    if self.status_manager:
+                                        self.status_manager.update_logic("Trade Success", f"Bought {qty} {symbol}", "ORDER FILLED")
+                                else:
+                                    if self.notifier:
+                                        self.notifier.send(f"❌ [{symbol} 예약매수 실패]")
+                                    if self.status_manager:
+                                        self.status_manager.update_logic("Error", f"Buy failed for {symbol}")
                         except Exception as e:
                             logger.error(f"[SCHEDULED] Buy failed: {e}")
+                            if self.notifier:
+                                self.notifier.send(f"❌ [예약매매 오류] {e}")
                             if self.status_manager:
                                 self.status_manager.update_logic("Error", f"Buy failed: {e}")
                         
@@ -317,16 +341,61 @@ class BotController:
         
         # 3. Execute Orders
         executed = False
+        executed_orders = []
         for order in orders:
             if order['type'] == 'buy':
                 # Add 1% buffer for limit order
                 buy_price = order['price'] * 1.01 
-                self.trader.buy(buy_price, order['symbol'])
+                success = self.trader.buy(buy_price, order['symbol'])
                 logger.info(f"[GRADUAL] Delegated Buy: 1 {order['symbol']} ({order.get('reason','')})")
-                executed = True
+                
+                if success:
+                    executed = True
+                    executed_orders.append(order)
+                    
+                    # [NEW] 매수 체결 예상 알림
+                    if self.notifier:
+                        self.notifier.send(f"✅ [{order['symbol']} 매수 전송] 1주 @ ${order['price']:.2f} 체결 예상")
                 
         if executed:
             self.last_dip_buy_time = get_kst_now()
+            
+            # [NEW] 최종 요약 알림 (등시점진 모드)
+            if self.notifier and executed_orders:
+                bought_symbols = [o['symbol'] for o in executed_orders]
+                total_amount = sum(o['price'] for o in executed_orders)
+                
+                # 여러 종목 매수 시 요약
+                if len(executed_orders) == 1:
+                    self._send_trade_summary(
+                        mode='등시점진',
+                        bought_symbol=executed_orders[0]['symbol'],
+                        bought_qty=1,
+                        bought_price=executed_orders[0]['price']
+                    )
+                else:
+                    # 다중 매수 시 커스텀 메시지
+                    now = get_kst_now()
+                    summary_msg = (
+                        f"✅ [거래 완료] {now.strftime('%Y-%m-%d %H:%M')} KST\n"
+                        f"━━━━━━━━━━━━━━━━━━\n"
+                    )
+                    for o in executed_orders:
+                        summary_msg += f"📥 매수: {o['symbol']} 1주 @ ${o['price']:.2f}\n"
+                    summary_msg += f"💰 총 금액: ${total_amount:.2f}\n"
+                    summary_msg += f"🏷️ 모드: 등시점진\n"
+                    summary_msg += f"━━━━━━━━━━━━━━━━━━"
+                    self.notifier.send(summary_msg)
+                    
+                    # 체결 확인용 저장 (첫 번째 종목만)
+                    self._last_trade = {
+                        'timestamp': now,
+                        'mode': '등시점진',
+                        'bought_symbol': executed_orders[0]['symbol'],
+                        'bought_qty': 1,
+                        'verified': False
+                    }
+            
             if self.status_manager:
                 bought_list = [f"1 {o['symbol']}" for o in orders if o['type'] == 'buy']
                 msg = f"Bought {', '.join(bought_list)}"
@@ -611,12 +680,22 @@ class BotController:
             # 9. Execute Sell SHV (if needed)
             proceeds = 0
             if shv_to_sell > 0:
+                # [NEW] 매도 주문 알림
+                if self.notifier:
+                    self.notifier.send(f"📤 [SHV 매도 주문] {shv_to_sell}주 @ ${shv_price:.2f}")
+                
                 sell_success = self.trader.sell(shv_to_sell, 'SHV', reason=f"S-T Exchange → {selected_etf}", fallback_price=shv_price)
                 if sell_success:
                     logger.info(f"[S-T EXCHANGE] Sold {shv_to_sell} SHV")
                     proceeds = shv_to_sell * shv_price # approx
+                    
+                    # [NEW] 매도 체결 예상 알림
+                    if self.notifier:
+                        self.notifier.send(f"✅ [SHV 매도 전송] {shv_to_sell}주 체결 예상")
                 else:
                     logger.error("[S-T EXCHANGE] SHV sell failed")
+                    if self.notifier:
+                        self.notifier.send(f"❌ [SHV 매도 실패]")
                     return # Stop if sell failed (don't use cash if main mechanism failed?)
                     # Actually if sell failed but we have cash, should we proceed? 
                     # Safer to stop/retry next time.
@@ -632,6 +711,22 @@ class BotController:
                 if buy_success:
                     logger.info(f"[S-T EXCHANGE] Bought ~{etf_to_buy} {selected_etf}")
                     
+                    # [NEW] 매수 체결 예상 알림
+                    if self.notifier:
+                        self.notifier.send(f"✅ [{selected_etf} 매수 전송] {etf_to_buy}주 체결 예상")
+                    
+                    # [NEW] 최종 요약 알림
+                    self._send_trade_summary(
+                        mode='S-T 교환',
+                        sold_symbol='SHV' if shv_to_sell > 0 else None,
+                        sold_qty=shv_to_sell,
+                        sold_price=shv_price,
+                        bought_symbol=selected_etf,
+                        bought_qty=etf_to_buy,
+                        bought_price=etf_price,
+                        cash_used=use_cash
+                    )
+                    
                     if self.status_manager:
                         source_msg = f"Cash+SHV" if shv_to_sell > 0 else "Cash"
                         self.status_manager.update_logic(
@@ -641,6 +736,8 @@ class BotController:
                         )
                 else:
                     logger.error(f"[S-T EXCHANGE] {selected_etf} buy failed")
+                    if self.notifier:
+                        self.notifier.send(f"❌ [{selected_etf} 매수 실패]")
                     if self.status_manager:
                         self.status_manager.update_logic("Partial Fail", f"Funds ready but buy failed")
             else:
@@ -1061,3 +1158,106 @@ class BotController:
             
         except Exception as e:
             logger.error(f"Failed to sync config: {e}")
+
+    def _send_trade_summary(self, mode: str, sold_symbol: str = None, sold_qty: int = 0,
+                            sold_price: float = 0, bought_symbol: str = None,
+                            bought_qty: int = 0, bought_price: float = 0,
+                            cash_used: float = 0):
+        """
+        모든 매매 모드 공통 요약 알림 전송
+        
+        Args:
+            mode: 거래 모드 이름 ('S-T 교환', '등시점진', '예약매매' 등)
+            sold_symbol: 매도 종목
+            sold_qty: 매도 수량
+            sold_price: 매도 가격
+            bought_symbol: 매수 종목
+            bought_qty: 매수 수량
+            bought_price: 매수 가격
+            cash_used: 사용한 현금
+        """
+        if not self.notifier:
+            return
+        
+        now = get_kst_now()
+        summary_msg = (
+            f"✅ [거래 완료] {now.strftime('%Y-%m-%d %H:%M')} KST\n"
+            f"━━━━━━━━━━━━━━━━━━\n"
+        )
+        
+        if sold_symbol and sold_qty > 0:
+            summary_msg += f"📤 매도: {sold_symbol} {sold_qty}주 @ ${sold_price:.2f}\n"
+        
+        if cash_used > 0:
+            summary_msg += f"💵 현금 사용: ${cash_used:.2f}\n"
+        
+        if bought_symbol and bought_qty > 0:
+            summary_msg += f"📥 매수: {bought_symbol} {bought_qty}주 @ ${bought_price:.2f}\n"
+            total_amt = bought_qty * bought_price
+            summary_msg += f"💰 총 금액: ${total_amt:.2f}\n"
+        
+        summary_msg += f"🏷️ 모드: {mode}\n"
+        summary_msg += f"━━━━━━━━━━━━━━━━━━"
+        
+        self.notifier.send(summary_msg)
+        
+        # 다음 주기 체결 확인용 저장
+        self._last_trade = {
+            'timestamp': now,
+            'mode': mode,
+            'bought_symbol': bought_symbol,
+            'bought_qty': bought_qty,
+            'verified': False
+        }
+        logger.info(f"[TRADE SUMMARY] Sent: {mode} - {bought_symbol} {bought_qty}주")
+
+    def _verify_last_trade(self):
+        """
+        다음 주기에 이전 거래 체결 여부 확인 (옵션 C)
+        보유량 변화를 확인하여 체결 성공/실패 알림
+        """
+        last_trade = getattr(self, '_last_trade', None)
+        if not last_trade or last_trade.get('verified', True):
+            return  # 확인할 거래 없음
+        
+        if not self.trader:
+            return
+        
+        try:
+            now = get_kst_now()
+            elapsed = (now - last_trade['timestamp']).total_seconds() / 60
+            
+            if elapsed >= 1:  # 최소 1분 경과 후 확인
+                all_holdings = self.trader.get_all_holdings()
+                if all_holdings is None:
+                    return  # API 오류, 다음 주기에 재시도
+                
+                holdings_dict = {h['symbol']: h for h in all_holdings}
+                bought_symbol = last_trade.get('bought_symbol')
+                bought_qty = last_trade.get('bought_qty', 0)
+                
+                if not bought_symbol:
+                    last_trade['verified'] = True
+                    return
+                
+                current_qty = holdings_dict.get(bought_symbol, {}).get('qty', 0)
+                
+                if current_qty >= bought_qty:
+                    logger.info(f"[VERIFY] {bought_symbol} 체결 확인: {current_qty}주 보유")
+                    if self.notifier:
+                        self.notifier.send(
+                            f"✅ [체결 확인] {bought_symbol} 체결 완료\n"
+                            f"현재 보유: {current_qty}주"
+                        )
+                else:
+                    logger.warning(f"[VERIFY] {bought_symbol} 체결 미확인: 예상 {bought_qty}주, 현재 {current_qty}주")
+                    if self.notifier:
+                        self.notifier.send(
+                            f"⚠️ [체결 확인 필요] {bought_symbol}\n"
+                            f"예상: +{bought_qty}주, 현재: {current_qty}주"
+                        )
+                
+                last_trade['verified'] = True
+                
+        except Exception as e:
+            logger.error(f"[VERIFY] 체결 확인 오류: {e}")

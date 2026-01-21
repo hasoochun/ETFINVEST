@@ -1,7 +1,7 @@
 {
   "trading_mode": "st-exchange",
   "strategy_mode": "neutral",
-  "daily_time": "23:30",
+  "daily_time": "22:00",
   "target_portfolio": {
     "TQQQ": 0.2,
     "SHV": 0.5,
@@ -12,5 +12,9 @@
   "is_running": true,
   "command": "start",
   "scheduled_qty": 1,
-  "last_updated": "2026-01-10T22:06:48.075822"
+  "last_updated": "2026-01-20T00:53:50.977279",
+  "gradual_interval": 5,
+  "gradual_targets": [
+    "all"
+  ]
 }
