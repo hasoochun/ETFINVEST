@@ -831,7 +831,8 @@ class BotController:
                 log_portfolio_history,
                 get_latest_portfolio_snapshot,
                 get_initial_capital,
-                set_initial_capital
+                set_initial_capital,
+                get_net_capital_flow
             )
             import yfinance as yf
             
@@ -878,7 +879,11 @@ class BotController:
             
             # Calculate cumulative return
             initial_capital = get_initial_capital() or total_value
-            cumulative_return_pct = ((total_value - initial_capital) / initial_capital * 100) if initial_capital > 0 else 0
+            # [FIX] Adjust principal for capital flows (Deposits)
+            net_flow = get_net_capital_flow()
+            adjusted_principal = initial_capital + net_flow
+            
+            cumulative_return_pct = ((total_value - adjusted_principal) / adjusted_principal * 100) if adjusted_principal > 0 else 0
             
             # Get S&P 500 benchmark
             benchmark_value = None
