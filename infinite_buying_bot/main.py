@@ -144,10 +144,13 @@ def main():
     from infinite_buying_bot.core.portfolio_manager import PortfolioManager
     portfolio_manager = PortfolioManager(initial_capital=0.0)
     cash, _, _ = trader.get_balance()
-    if cash > 0:
+    # [FIX] Handle None cash (KIS API 500 error during market close)
+    if cash is not None and cash > 0:
         portfolio_manager.update_cash(cash)
+        logger.info(f"[FIX] PortfolioManager connected with cash: ${cash:.2f}")
+    else:
+        logger.warning(f"[WARN] Cash is None or 0 (market may be closed), PortfolioManager initialized with 0")
     bot_controller.portfolio_manager = portfolio_manager
-    logger.info(f"[FIX] PortfolioManager connected with cash: ${cash:.2f}")
     
     # Start Telegram bot in separate thread
     telegram_thread = Thread(target=start_telegram_bot, args=(bot_controller, config), daemon=True)
@@ -177,6 +180,7 @@ def main():
             
             # 1.5 Check S-T Exchange Schedule (Allow Pre-market Execution)
             is_st_scheduled_now = False
+            is_scheduled_single_now = False  # [NEW] 예약매매 체크
             trading_mode = getattr(bot_controller, 'trading_mode', 'gradual')
             
             if trading_mode == 'st-exchange':
@@ -194,9 +198,27 @@ def main():
                             logger.info(f"[S-T EXCHANGE] Pre-market execution allowed for scheduled time: {daily_time} KST")
                 except ValueError:
                     logger.error(f"Invalid daily_time format: {daily_time}")
+            
+            # [NEW] 예약매매(scheduled-single) 모드도 휴장 시간에 실행 허용
+            elif trading_mode == 'scheduled-single':
+                scheduled_time = getattr(bot_controller, 'scheduled_time', '22:00')
+                tz_kst = pytz.timezone('Asia/Seoul')
+                now_kst = datetime.now(tz_kst)
+                
+                try:
+                    target_hour, target_minute = map(int, scheduled_time.split(':'))
+                    # 목표 시간 ±1분 범위 체크 (정확히 해당 분에 실행)
+                    if now_kst.hour == target_hour and now_kst.minute == target_minute:
+                        # 오늘 이미 실행했는지 체크
+                        last_scheduled = getattr(bot_controller, 'last_scheduled_buy_date', None)
+                        if last_scheduled != now_kst.date():
+                            is_scheduled_single_now = True
+                            logger.info(f"[SCHEDULED-SINGLE] Pre-market execution allowed for scheduled time: {scheduled_time} KST")
+                except ValueError:
+                    logger.error(f"Invalid scheduled_time format: {scheduled_time}")
 
-            # 2. Check Market Status (S-T Exchange bypasses market check)
-            if not scheduler.is_market_open() and not is_st_scheduled_now:
+            # 2. Check Market Status (S-T Exchange and Scheduled-Single bypass market check)
+            if not scheduler.is_market_open() and not is_st_scheduled_now and not is_scheduled_single_now:
                 logger.info("Market is closed. Sleeping...")
                 bot_controller.status_manager.update_logic("Sleeping", "Market is Closed", "MARKET CLOSED")
                 time.sleep(60)
