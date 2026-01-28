@@ -64,7 +64,7 @@ class BotController:
         ]
         
         # Load from config file on init
-        self._sync_from_config()
+        self.sync_with_config()
 
         # [NEW] Holdings history timer
         self.last_holdings_log_time = None
@@ -90,7 +90,7 @@ class BotController:
             self._verify_last_trade()
             
             # [NEW] Sync config every cycle to pick up UI changes
-            self._sync_from_config()
+            self.sync_with_config()
 
             # [FIX] Update heartbeat
             if self.status_manager:
@@ -158,8 +158,8 @@ class BotController:
                 # Gradual Mode: Check Start Time & Interval
                 now = get_kst_now()  # KST 시간 사용
                 
-                # 1. Check Start Time (Unified Time Setting)
-                target_str = getattr(self, 'daily_time', '22:00')
+                # 1. Check Start Time (Independent Time Setting)
+                target_str = getattr(self, 'gradual_start_time', '23:40')
                 try:
                     target_hour, target_minute = map(int, target_str.split(':'))
                     current_min = now.hour * 60 + now.minute
@@ -1174,6 +1174,9 @@ class BotController:
             
             # 6. Sync Daily Time (for S-T exchange mode)
             self.daily_time = config.get('daily_time', '22:00')
+            
+            # [NEW] Sync Gradual Start Time
+            self.gradual_start_time = config.get('gradual_start_time', '23:40')
             
             # 7. Sync Portfolio Targets
             target_portfolio = config.get('target_portfolio', {})
