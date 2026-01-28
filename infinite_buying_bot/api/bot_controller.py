@@ -155,8 +155,38 @@ class BotController:
             from datetime import timedelta
             
             if self.trading_mode == 'gradual':
-                # Gradual Mode: Check 1-minute interval
+                # Gradual Mode: Check Start Time & Interval
                 now = get_kst_now()  # KST 시간 사용
+                
+                # 1. Check Start Time (Unified Time Setting)
+                target_str = getattr(self, 'daily_time', '22:00')
+                try:
+                    target_hour, target_minute = map(int, target_str.split(':'))
+                    current_min = now.hour * 60 + now.minute
+                    target_min = target_hour * 60 + target_minute
+                    
+                    # Overnight Logic:
+                    # If target is late (e.g. 23:40), we allow 23:40~23:59 AND 00:00~08:00
+                    # If target is early (e.g. 22:00), same logic.
+                    # Simple check: If now is "before" target in a daily context, WAIT.
+                    # But we must handle "Early Morning" which is technically "after" 23:40 of previous day.
+                    
+                    is_after_start = False
+                    if current_min >= target_min:
+                        is_after_start = True # Simple case: 23:50 >= 23:40
+                    elif current_min < 480: # Before 08:00 AM
+                        is_after_start = True # Assume continued session from previous night
+                        
+                    if not is_after_start:
+                        if self.status_manager:
+                            self.status_manager.update_logic("Gradual Waiting", f"Waiting for Start Time: {target_str}", "IDLE")
+                        return # Skip execution until start time
+                        
+                except Exception as e:
+                    logger.warning(f"[Gradual] Time check error: {e}")
+                    # Proceed if error to avoid stuck state
+                
+                # 2. Check Interval
                 interval_mins = getattr(self, 'gradual_interval', 1) 
                 interval_sec = interval_mins * 60
                 
@@ -173,17 +203,12 @@ class BotController:
                     if self.status_manager:
                         self.status_manager.update_logic("Executing", f"Gradual: Interval reached. Starting split buy...", "BUSY")
                     
-                    # [Architectural Separation] 
-                    # Delegate execution to PortfolioManager or Strategy Engine
-                    # self.portfolio_manager.execute_gradual_step() 
-                    
-                    # For now, we perform the minimal action to satisfy the "Simultaneous Gradual" definition 
-                    # while causing minimal side-effects in this controller.
+                    # Pass daily_time context if needed, or just execute
                     self._execute_gradual_buy(cash) 
                 else:
                     if self.status_manager:
-                        self.status_manager.update_logic("Gradual Waiting", f"Next Split Buy: in {remaining_sec:.0f}s (Interval: {interval_mins}m)")
-                    
+                        self.status_manager.update_logic("Gradual Waiting", f"Run: {target_str}~ | Next: {remaining_sec:.0f}s (Int: {interval_mins}m)")
+
             elif self.trading_mode == 'st-exchange':
                 # S-T Exchange Mode: Check target time with market day awareness
                 now = get_kst_now()  # KST 시간 사용 (사용자 입력과 일치)
